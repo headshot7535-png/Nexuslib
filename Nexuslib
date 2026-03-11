@@ -1,0 +1,850 @@
+-- ============================================================
+--  NexusLib v1.0  |  GUI Library
+--  Usage:
+--    local Lib = loadstring(game:HttpGet("URL"))()
+--    local Win  = Lib:Window({ title="My GUI" })
+--    local Tab  = Win:Tab("⚙️","Settings")
+--    Tab:Section("Movement")
+--    Tab:Toggle("Infinite Jump", false, function(on) end)
+--    Tab:Slider("Walk Speed",{min=0,max=300,default=16}, function(v) end)
+--    Tab:Button("🔄","Respawn","Reset char", function() end)
+--    Win:ChatTab()   -- built-in cross-server chat
+-- ============================================================
+
+local NexusLib = {}
+NexusLib.__index = NexusLib
+
+-- ── Services ─────────────────────────────────────────────────
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local TweenService     = game:GetService("TweenService")
+local HS               = game:GetService("HttpService")
+
+-- ── Player ───────────────────────────────────────────────────
+local LP
+for _ = 1, 60 do
+    LP = Players.LocalPlayer
+    if LP and LP:FindFirstChildOfClass("PlayerGui") then break end
+    task.wait(0.2)
+end
+if not LP then return {} end
+
+local function getChar()  return LP.Character end
+local function getHuman() local c=getChar() return c and c:FindFirstChildOfClass("Humanoid") end
+local function getRoot()  local c=getChar() return c and c:FindFirstChild("HumanoidRootPart") end
+
+-- ── HTTP helper ───────────────────────────────────────────────
+local function httpRequest(opts)
+    local fn = (syn and syn.request)
+             or (http and http.request)
+             or (http_request)
+             or (request)
+    if not fn then return nil end
+    return fn(opts)
+end
+
+-- ── Theme ─────────────────────────────────────────────────────
+local C = {
+    bg      = Color3.fromRGB(8,10,18),
+    panel   = Color3.fromRGB(12,15,26),
+    card    = Color3.fromRGB(15,19,32),
+    border  = Color3.fromRGB(25,35,60),
+    accent  = Color3.fromRGB(0,180,255),
+    accentD = Color3.fromRGB(0,100,180),
+    text    = Color3.fromRGB(210,225,245),
+    sub     = Color3.fromRGB(60,80,120),
+    green   = Color3.fromRGB(0,200,100),
+    purple  = Color3.fromRGB(160,80,255),
+    red     = Color3.fromRGB(255,70,70),
+    orange  = Color3.fromRGB(255,160,30),
+    gold    = Color3.fromRGB(255,210,50),
+}
+
+-- ── Built-in feature state ────────────────────────────────────
+local _featureRunGen = 0
+local function newGen() _featureRunGen = _featureRunGen + 1; return _featureRunGen end
+
+-- ============================================================
+--  WINDOW
+-- ============================================================
+function NexusLib:Window(cfg)
+    cfg = cfg or {}
+    local title  = cfg.title  or "NexusLib"
+    local W      = cfg.width  or 360
+    local H      = cfg.height or 620
+
+    -- destroy old if re-executed
+    pcall(function()
+        local old = LP.PlayerGui:FindFirstChild("NexusLib_"..title:gsub("%s",""))
+        if old then old:Destroy() end
+    end)
+
+    local Screen = Instance.new("ScreenGui")
+    Screen.Name = "NexusLib_"..title:gsub("%s","")
+    Screen.ResetOnSpawn = false
+    Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    Screen.Parent = LP.PlayerGui
+
+    -- ── Toggle icon ──────────────────────────────────────────
+    local Icon = Instance.new("ImageButton", Screen)
+    Icon.Image = "rbxassetid://3117561276"
+    Icon.Size = UDim2.new(0,50,0,50)
+    Icon.Position = UDim2.new(0,10,0.5,-25)
+    Icon.BackgroundColor3 = Color3.fromRGB(5,5,15)
+    Icon.BorderSizePixel = 0; Icon.ZIndex = 20
+    Icon.ScaleType = Enum.ScaleType.Fit
+    Instance.new("UICorner",Icon).CornerRadius = UDim.new(1,0)
+    local iStroke = Instance.new("UIStroke",Icon)
+    iStroke.Color = C.accent; iStroke.Thickness = 2.5; iStroke.Transparency = 0.2
+
+    -- icon drag
+    local iDrag, iDragStart, iStartPos = false
+    Icon.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            iDrag = true; iDragStart = i.Position; iStartPos = Icon.Position
+        end
+    end)
+    Icon.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then iDrag = false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if iDrag and i.UserInputType == Enum.UserInputType.MouseMovement then
+            local d = i.Position - iDragStart
+            Icon.Position = UDim2.new(iStartPos.X.Scale, iStartPos.X.Offset+d.X,
+                                      iStartPos.Y.Scale, iStartPos.Y.Offset+d.Y)
+        end
+    end)
+
+    -- ── Main frame ───────────────────────────────────────────
+    local Main = Instance.new("Frame", Screen)
+    Main.Name = "Main"; Main.Size = UDim2.new(0,W,0,H)
+    Main.Position = UDim2.new(0.5,-W/2,0.5,-H/2)
+    Main.BackgroundColor3 = C.bg; Main.BorderSizePixel = 0
+    Main.Active = true; Main.Draggable = true; Main.ClipsDescendants = true
+    Instance.new("UICorner",Main).CornerRadius = UDim.new(0,14)
+    local mStroke = Instance.new("UIStroke",Main)
+    mStroke.Color = C.accent; mStroke.Thickness = 1.5; mStroke.Transparency = 0.6
+
+    Icon.MouseButton1Click:Connect(function()
+        Main.Visible = not Main.Visible
+        iStroke.Transparency = Main.Visible and 0.2 or 0.7
+    end)
+
+    -- ── Title bar ────────────────────────────────────────────
+    local TitleBar = Instance.new("Frame", Main)
+    TitleBar.Size = UDim2.new(1,0,0,46); TitleBar.BackgroundTransparency = 1
+
+    local TitleLbl = Instance.new("TextLabel", TitleBar)
+    TitleLbl.Text = title; TitleLbl.Size = UDim2.new(1,-60,1,0); TitleLbl.Position = UDim2.new(0,14,0,0)
+    TitleLbl.BackgroundTransparency = 1; TitleLbl.TextColor3 = C.text
+    TitleLbl.Font = Enum.Font.GothamBold; TitleLbl.TextSize = 15
+    TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local CloseBtn = Instance.new("TextButton", TitleBar)
+    CloseBtn.Text = "✕"; CloseBtn.Size = UDim2.new(0,28,0,28)
+    CloseBtn.Position = UDim2.new(1,-36,0.5,-14)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(60,20,20); CloseBtn.BorderSizePixel = 0
+    CloseBtn.TextColor3 = C.red; CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 12
+    Instance.new("UICorner",CloseBtn).CornerRadius = UDim.new(1,0)
+    CloseBtn.MouseButton1Click:Connect(function() Main.Visible = false end)
+
+    -- ── Tab bar (scrollable) ─────────────────────────────────
+    local TabBar = Instance.new("ScrollingFrame", Main)
+    TabBar.Size = UDim2.new(1,-20,0,34); TabBar.Position = UDim2.new(0,10,0,50)
+    TabBar.BackgroundColor3 = C.card; TabBar.BorderSizePixel = 0
+    TabBar.ScrollBarThickness = 0; TabBar.ScrollingDirection = Enum.ScrollingDirection.X
+    TabBar.AutomaticCanvasSize = Enum.AutomaticSize.X; TabBar.CanvasSize = UDim2.new(0,0,0,0)
+    TabBar.ClipsDescendants = true
+    Instance.new("UICorner",TabBar).CornerRadius = UDim.new(0,10)
+    Instance.new("UIStroke",TabBar).Color = C.border
+    local TBLayout = Instance.new("UIListLayout", TabBar)
+    TBLayout.FillDirection = Enum.FillDirection.Horizontal
+    TBLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    TBLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    TBLayout.Padding = UDim.new(0,4)
+    local TBPad = Instance.new("UIPadding", TabBar)
+    TBPad.PaddingLeft = UDim.new(0,4); TBPad.PaddingRight = UDim.new(0,4)
+
+    -- ── Content area ─────────────────────────────────────────
+    local Content = Instance.new("Frame", Main)
+    Content.Size = UDim2.new(1,-20,1,-108); Content.Position = UDim2.new(0,10,0,90)
+    Content.BackgroundTransparency = 1; Content.BorderSizePixel = 0
+    Content.ClipsDescendants = true
+
+    -- ── Status bar ───────────────────────────────────────────
+    local StatusBar = Instance.new("Frame", Main)
+    StatusBar.Size = UDim2.new(1,0,0,20); StatusBar.Position = UDim2.new(0,0,1,-20)
+    StatusBar.BackgroundColor3 = Color3.fromRGB(5,6,12); StatusBar.BorderSizePixel = 0
+    local SDot = Instance.new("Frame", StatusBar)
+    SDot.Size = UDim2.new(0,5,0,5); SDot.Position = UDim2.new(0,10,0.5,-2.5)
+    SDot.BackgroundColor3 = C.accent; SDot.BorderSizePixel = 0
+    Instance.new("UICorner",SDot).CornerRadius = UDim.new(1,0)
+    local SLbl = Instance.new("TextLabel", StatusBar)
+    SLbl.Text = "Ready · NexusLib v1.0"; SLbl.Size = UDim2.new(1,-22,1,0)
+    SLbl.Position = UDim2.new(0,20,0,0); SLbl.BackgroundTransparency = 1
+    SLbl.TextColor3 = C.sub; SLbl.Font = Enum.Font.Code; SLbl.TextSize = 9
+    SLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- ── Tab system ───────────────────────────────────────────
+    local tabs = {}
+    local activeTab = nil
+
+    local function switchTab(name)
+        activeTab = name
+        for tname, td in pairs(tabs) do
+            local on = (tname == name)
+            if on then
+                td.btn.BackgroundColor3 = C.accent
+                td.btn.TextColor3 = Color3.fromRGB(255,255,255)
+                local bPos = td.btn.AbsolutePosition.X - TabBar.AbsolutePosition.X
+                local bW   = td.btn.AbsoluteSize.X
+                local barW = TabBar.AbsoluteSize.X
+                TabBar.CanvasPosition = Vector2.new(math.max(0, bPos-(barW/2-bW/2)), 0)
+            else
+                td.btn.BackgroundColor3 = Color3.fromRGB(0,0,0)
+                td.btn.TextColor3 = C.sub
+                td.btn.BackgroundTransparency = 1
+            end
+            td.page.Visible = on
+        end
+    end
+
+    -- ── Window object ────────────────────────────────────────
+    local PRESENCE_URL = "https://anipixels-chat-default-rtdb.firebaseio.com/presence"
+    local _presenceKey = nil  -- our own Firebase key so we can update it
+
+    local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab }
+
+    function Win:Status(msg) SLbl.Text = msg end
+
+    -- ── Live user count ───────────────────────────────────────
+    -- Writes a heartbeat to Firebase every 20s. Counts entries
+    -- with a timestamp within the last 60s = currently online.
+    local function startPresence()
+        _G.NexusLib_PresenceGen = (_G.NexusLib_PresenceGen or 0) + 1
+        local myGen = _G.NexusLib_PresenceGen
+
+        local function writeHeartbeat()
+            local payload = HS:JSONEncode({
+                t = os.time(),
+                s = game.JobId ~= "" and game.JobId:sub(1,8) or "studio",
+            })
+            if _presenceKey then
+                -- update existing entry
+                pcall(httpRequest, {
+                    Url     = PRESENCE_URL.."/"..tostring(_presenceKey)..".json",
+                    Method  = "PATCH",
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body    = payload,
+                })
+            else
+                -- first write — POST returns a new key
+                local ok, res = pcall(httpRequest, {
+                    Url     = PRESENCE_URL..".json",
+                    Method  = "POST",
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body    = payload,
+                })
+                if ok and res and res.Body then
+                    local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
+                    if ok2 and data and data.name then
+                        _presenceKey = data.name
+                    end
+                end
+            end
+        end
+
+        local function countOnline()
+            local ok, res = pcall(httpRequest, {
+                Url     = PRESENCE_URL..".json",
+                Method  = "GET",
+                Headers = { ["Accept"] = "application/json" },
+            })
+            if not ok or not res or not res.Body or res.Body == "null" or res.Body == "" then
+                return 0
+            end
+            local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
+            if not ok2 or type(data) ~= "table" then return 0 end
+            local now = os.time()
+            local count = 0
+            for _, v in pairs(data) do
+                if type(v) == "table" and v.t and (now - v.t) <= 60 then
+                    count = count + 1
+                end
+            end
+            return count
+        end
+
+        -- prune stale entries older than 5 minutes so DB doesn't bloat
+        local function pruneStale()
+            local ok, res = pcall(httpRequest, {
+                Url     = PRESENCE_URL..".json",
+                Method  = "GET",
+                Headers = { ["Accept"] = "application/json" },
+            })
+            if not ok or not res or not res.Body or res.Body == "null" then return end
+            local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
+            if not ok2 or type(data) ~= "table" then return end
+            local now = os.time()
+            for key, v in pairs(data) do
+                if type(v) == "table" and v.t and (now - v.t) > 300 then
+                    pcall(httpRequest, {
+                        Url    = PRESENCE_URL.."/"..tostring(key)..".json",
+                        Method = "DELETE",
+                    })
+                end
+            end
+        end
+
+        task.spawn(function()
+            writeHeartbeat()
+            local count = countOnline()
+            SLbl.Text = "🟢 "..count.." online · NexusLib v1.0"
+
+            local tick = 0
+            while true do
+                if _G.NexusLib_PresenceGen ~= myGen then
+                    -- clean up our own entry on re-exec
+                    if _presenceKey then
+                        pcall(httpRequest, {
+                            Url    = PRESENCE_URL.."/"..tostring(_presenceKey)..".json",
+                            Method = "DELETE",
+                        })
+                        _presenceKey = nil
+                    end
+                    break
+                end
+                task.wait(20)
+                writeHeartbeat()
+                count = countOnline()
+                SLbl.Text = "🟢 "..count.." online · NexusLib v1.0"
+                tick = tick + 1
+                -- prune stale entries every 5 cycles (~100s)
+                if tick % 5 == 0 then task.spawn(pruneStale) end
+            end
+        end)
+    end
+
+    startPresence()
+
+    function Win:Tab(icon, name)
+        local btn = Instance.new("TextButton", TabBar)
+        btn.Text = icon.." "..name; btn.Size = UDim2.new(0,70,0,26)
+        btn.BackgroundTransparency = 1; btn.TextColor3 = C.sub
+        btn.Font = Enum.Font.GothamBold; btn.TextSize = 10; btn.BorderSizePixel = 0
+        Instance.new("UICorner",btn).CornerRadius = UDim.new(0,7)
+
+        local page = Instance.new("ScrollingFrame", Content)
+        page.Size = UDim2.new(1,0,1,0); page.BackgroundTransparency = 1
+        page.BorderSizePixel = 0; page.ScrollBarThickness = 3
+        page.ScrollBarImageColor3 = C.accent; page.Visible = false
+        page.AutomaticCanvasSize = Enum.AutomaticSize.Y; page.CanvasSize = UDim2.new(0,0,0,0)
+        local layout = Instance.new("UIListLayout", page)
+        layout.Padding = UDim.new(0,6); layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        Instance.new("UIPadding",page).PaddingTop = UDim.new(0,8)
+
+        tabs[name] = { btn=btn, page=page, layout=layout }
+        btn.MouseButton1Click:Connect(function() switchTab(name) end)
+        if not activeTab then switchTab(name) end
+
+        local order = 0
+        local T = { _page=page, _layout=layout }
+
+        -- ── Section label ─────────────────────────────────
+        function T:Section(txt)
+            order = order + 1
+            local f = Instance.new("Frame", page)
+            f.Size = UDim2.new(1,-10,0,16); f.BackgroundTransparency = 1; f.LayoutOrder = order
+            local line = Instance.new("Frame", f)
+            line.Size = UDim2.new(1,0,0,1); line.Position = UDim2.new(0,0,0.5,0)
+            line.BackgroundColor3 = C.border; line.BorderSizePixel = 0
+            local bg = Instance.new("Frame", f)
+            bg.Size = UDim2.new(0,0,1,0); bg.AutomaticSize = Enum.AutomaticSize.X
+            bg.Position = UDim2.new(0,8,0,0); bg.BackgroundColor3 = C.bg; bg.BorderSizePixel = 0
+            Instance.new("UIPadding",bg).PaddingLeft = UDim.new(0,6)
+            local lbl = Instance.new("TextLabel", bg)
+            lbl.Text = txt:upper(); lbl.Size = UDim2.new(0,0,1,0); lbl.AutomaticSize = Enum.AutomaticSize.X
+            lbl.BackgroundTransparency = 1; lbl.TextColor3 = C.sub
+            lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 9
+            return f
+        end
+
+        -- ── Toggle ────────────────────────────────────────
+        function T:Toggle(label, desc, default, cb)
+            order = order + 1
+            local state = default or false
+            local Card = Instance.new("Frame", page)
+            Card.Size = UDim2.new(1,-10,0,52); Card.BackgroundColor3 = C.card
+            Card.BorderSizePixel = 0; Card.LayoutOrder = order
+            Instance.new("UICorner",Card).CornerRadius = UDim.new(0,10)
+            local cs = Instance.new("UIStroke",Card); cs.Color = C.border; cs.Thickness = 1
+
+            local nL = Instance.new("TextLabel",Card)
+            nL.Text = label; nL.Size = UDim2.new(1,-120,0,18); nL.Position = UDim2.new(0,14,0,8)
+            nL.BackgroundTransparency = 1; nL.TextColor3 = C.text
+            nL.Font = Enum.Font.GothamBold; nL.TextSize = 12; nL.TextXAlignment = Enum.TextXAlignment.Left
+
+            local dL = Instance.new("TextLabel",Card)
+            dL.Text = desc or ""; dL.Size = UDim2.new(1,-120,0,14); dL.Position = UDim2.new(0,14,0,28)
+            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub
+            dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+
+            local badge = Instance.new("TextLabel",Card)
+            badge.Size = UDim2.new(0,34,0,17); badge.Position = UDim2.new(1,-88,0.5,-8)
+            badge.BackgroundColor3 = C.panel; badge.BorderSizePixel = 0
+            badge.Font = Enum.Font.GothamBold; badge.TextSize = 9
+            Instance.new("UICorner",badge).CornerRadius = UDim.new(0,5)
+
+            local Pill = Instance.new("Frame",Card)
+            Pill.Size = UDim2.new(0,44,0,24); Pill.Position = UDim2.new(1,-50,0.5,-12)
+            Pill.BorderSizePixel = 0
+            Instance.new("UICorner",Pill).CornerRadius = UDim.new(1,0)
+
+            local Thumb = Instance.new("Frame",Pill)
+            Thumb.Size = UDim2.new(0,18,0,18); Thumb.BorderSizePixel = 0
+            Instance.new("UICorner",Thumb).CornerRadius = UDim.new(1,0)
+
+            local ti = TweenInfo.new(0.18, Enum.EasingStyle.Quad)
+
+            local function setState(on)
+                state = on
+                if on then
+                    TweenService:Create(Pill, ti,{BackgroundColor3=C.accentD}):Play()
+                    TweenService:Create(Thumb,ti,{Position=UDim2.new(0,23,0.5,-9),BackgroundColor3=C.accent}):Play()
+                    cs.Color = C.accentD
+                    badge.Text = "ON"; badge.TextColor3 = C.accent
+                    badge.BackgroundColor3 = Color3.fromRGB(0,30,55)
+                else
+                    TweenService:Create(Pill, ti,{BackgroundColor3=C.border}):Play()
+                    TweenService:Create(Thumb,ti,{Position=UDim2.new(0,3,0.5,-9),BackgroundColor3=C.sub}):Play()
+                    cs.Color = C.border
+                    badge.Text = "OFF"; badge.TextColor3 = C.sub
+                    badge.BackgroundColor3 = C.panel
+                end
+                if cb then cb(on) end
+            end
+
+            -- init visual
+            if state then
+                Pill.BackgroundColor3 = C.accentD; cs.Color = C.accentD
+                Thumb.Position = UDim2.new(0,23,0.5,-9); Thumb.BackgroundColor3 = C.accent
+                badge.Text = "ON"; badge.TextColor3 = C.accent
+                badge.BackgroundColor3 = Color3.fromRGB(0,30,55)
+            else
+                Pill.BackgroundColor3 = C.border; cs.Color = C.border
+                Thumb.Position = UDim2.new(0,3,0.5,-9); Thumb.BackgroundColor3 = C.sub
+                badge.Text = "OFF"; badge.TextColor3 = C.sub
+                badge.BackgroundColor3 = C.panel
+            end
+
+            local Btn = Instance.new("TextButton",Card)
+            Btn.Size = UDim2.new(1,0,1,0); Btn.BackgroundTransparency = 1
+            Btn.Text = ""; Btn.ZIndex = 3
+            Btn.MouseButton1Click:Connect(function() setState(not state) end)
+
+            return { Set = setState, Get = function() return state end }
+        end
+
+        -- ── Slider ────────────────────────────────────────
+        function T:Slider(label, desc, opts, cb)
+            order = order + 1
+            local minV    = opts.min     or 0
+            local maxV    = opts.max     or 100
+            local initV   = opts.default or minV
+            local fmt     = opts.format  or function(v) return tostring(math.floor(v)) end
+
+            local Card = Instance.new("Frame", page)
+            Card.Size = UDim2.new(1,-10,0,60); Card.BackgroundColor3 = C.card
+            Card.BorderSizePixel = 0; Card.LayoutOrder = order
+            Instance.new("UICorner",Card).CornerRadius = UDim.new(0,10)
+            Instance.new("UIStroke",Card).Color = C.border
+
+            local nL = Instance.new("TextLabel",Card)
+            nL.Text = label; nL.Size = UDim2.new(1,-80,0,18); nL.Position = UDim2.new(0,14,0,6)
+            nL.BackgroundTransparency = 1; nL.TextColor3 = C.text
+            nL.Font = Enum.Font.GothamBold; nL.TextSize = 12; nL.TextXAlignment = Enum.TextXAlignment.Left
+
+            local vL = Instance.new("TextLabel",Card)
+            vL.Text = fmt(initV); vL.Size = UDim2.new(0,60,0,18); vL.Position = UDim2.new(1,-68,0,6)
+            vL.BackgroundTransparency = 1; vL.TextColor3 = C.accent
+            vL.Font = Enum.Font.Code; vL.TextSize = 13; vL.TextXAlignment = Enum.TextXAlignment.Right
+
+            local dL = Instance.new("TextLabel",Card)
+            dL.Text = desc or ""; dL.Size = UDim2.new(1,-80,0,12); dL.Position = UDim2.new(0,14,0,26)
+            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub
+            dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+
+            local Track = Instance.new("Frame",Card)
+            Track.Size = UDim2.new(1,-28,0,6); Track.Position = UDim2.new(0,14,0,44)
+            Track.BackgroundColor3 = C.panel; Track.BorderSizePixel = 0
+            Instance.new("UICorner",Track).CornerRadius = UDim.new(1,0)
+
+            local pct0 = (initV-minV)/(maxV-minV)
+            local Fill = Instance.new("Frame",Track)
+            Fill.Size = UDim2.new(pct0,0,1,0); Fill.BackgroundColor3 = C.accent; Fill.BorderSizePixel = 0
+            Instance.new("UICorner",Fill).CornerRadius = UDim.new(1,0)
+
+            local Knob = Instance.new("TextButton",Track)
+            Knob.Text = ""; Knob.Size = UDim2.new(0,16,0,16); Knob.AnchorPoint = Vector2.new(0.5,0.5)
+            Knob.Position = UDim2.new(pct0,0,0.5,0)
+            Knob.BackgroundColor3 = Color3.fromRGB(255,255,255); Knob.BorderSizePixel = 0; Knob.ZIndex = 4
+            Instance.new("UICorner",Knob).CornerRadius = UDim.new(1,0)
+
+            local curVal = initV
+            local dragging = false
+            local function apply(ix)
+                local rel = math.clamp(ix - Track.AbsolutePosition.X, 0, Track.AbsoluteSize.X)
+                local p   = rel / Track.AbsoluteSize.X
+                local v   = minV + math.round((maxV-minV)*p)
+                curVal = v
+                Fill.Size = UDim2.new(p,0,1,0); Knob.Position = UDim2.new(p,0,0.5,0)
+                vL.Text = fmt(v)
+                if cb then cb(v) end
+            end
+            Knob.InputBegan:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
+            end)
+            UserInputService.InputChanged:Connect(function(i)
+                if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then apply(i.Position.X) end
+            end)
+            UserInputService.InputEnded:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+            end)
+            Track.InputBegan:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton1 then apply(i.Position.X) end
+            end)
+
+            return { Get = function() return curVal end }
+        end
+
+        -- ── Button ────────────────────────────────────────
+        function T:Button(icon, label, desc, accentCol, cb)
+            -- allow omitting accentCol: Button(icon, label, desc, cb)
+            if type(accentCol) == "function" then cb = accentCol; accentCol = nil end
+            accentCol = accentCol or C.accent
+            order = order + 1
+
+            local Card = Instance.new("TextButton", page)
+            Card.Size = UDim2.new(1,-10,0,44); Card.BackgroundColor3 = C.card
+            Card.BorderSizePixel = 0; Card.LayoutOrder = order; Card.Text = ""
+            Instance.new("UICorner",Card).CornerRadius = UDim.new(0,10)
+            local cs = Instance.new("UIStroke",Card); cs.Color = accentCol; cs.Thickness = 1
+
+            local iL = Instance.new("TextLabel",Card)
+            iL.Text = icon; iL.Size = UDim2.new(0,36,1,0); iL.Position = UDim2.new(0,6,0,0)
+            iL.BackgroundTransparency = 1; iL.TextSize = 18; iL.Font = Enum.Font.GothamBold
+            iL.TextXAlignment = Enum.TextXAlignment.Center
+
+            local nL = Instance.new("TextLabel",Card)
+            nL.Text = label; nL.Size = UDim2.new(1,-50,0,18); nL.Position = UDim2.new(0,46,0,6)
+            nL.BackgroundTransparency = 1; nL.TextColor3 = accentCol
+            nL.Font = Enum.Font.GothamBold; nL.TextSize = 11; nL.TextXAlignment = Enum.TextXAlignment.Left
+
+            local dL = Instance.new("TextLabel",Card)
+            dL.Text = desc or ""; dL.Size = UDim2.new(1,-50,0,13); dL.Position = UDim2.new(0,46,0,24)
+            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub
+            dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+
+            Card.MouseButton1Click:Connect(function()
+                TweenService:Create(Card,TweenInfo.new(0.08),{BackgroundColor3=Color3.fromRGB(20,25,40)}):Play()
+                task.delay(0.15,function() TweenService:Create(Card,TweenInfo.new(0.15),{BackgroundColor3=C.card}):Play() end)
+                if cb then cb() end
+            end)
+            return Card
+        end
+
+        -- ── Label ─────────────────────────────────────────
+        function T:Label(txt)
+            order = order + 1
+            local f = Instance.new("Frame", page)
+            f.Size = UDim2.new(1,-10,0,28); f.BackgroundTransparency = 1; f.LayoutOrder = order
+            local l = Instance.new("TextLabel", f)
+            l.Size = UDim2.new(1,0,1,0); l.BackgroundTransparency = 1
+            l.TextColor3 = C.sub; l.Font = Enum.Font.Gotham; l.TextSize = 10
+            l.TextXAlignment = Enum.TextXAlignment.Left; l.TextWrapped = true
+            l.Text = txt
+            return { Set = function(s) l.Text = s end }
+        end
+
+        return T
+    end
+
+    -- ============================================================
+    --  BUILT-IN: Chat Tab (Firebase cross-server)
+    -- ============================================================
+    function Win:ChatTab(firebaseUrl)
+        firebaseUrl = firebaseUrl or "https://anipixels-chat-default-rtdb.firebaseio.com/chat"
+        local T = self:Tab("💬","Chat")
+
+        -- info bar
+        local InfoCard = Instance.new("Frame", T._page)
+        InfoCard.Size = UDim2.new(1,-10,0,28); InfoCard.BackgroundColor3 = Color3.fromRGB(30,30,45)
+        InfoCard.BorderSizePixel = 0; InfoCard.LayoutOrder = 1
+        Instance.new("UICorner",InfoCard).CornerRadius = UDim.new(0,8)
+        local InfoLbl = Instance.new("TextLabel",InfoCard)
+        InfoLbl.Size = UDim2.new(1,-10,1,0); InfoLbl.Position = UDim2.new(0,8,0,0)
+        InfoLbl.BackgroundTransparency = 1; InfoLbl.TextColor3 = C.sub
+        InfoLbl.Font = Enum.Font.Gotham; InfoLbl.TextSize = 9; InfoLbl.TextWrapped = true
+        InfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+        InfoLbl.Text = "💬 Cross-server chat"
+
+        -- feed
+        local FeedOuter = Instance.new("Frame", T._page)
+        FeedOuter.Size = UDim2.new(1,-10,0,200); FeedOuter.BackgroundColor3 = Color3.fromRGB(14,14,22)
+        FeedOuter.BorderSizePixel = 0; FeedOuter.LayoutOrder = 2; FeedOuter.ClipsDescendants = true
+        Instance.new("UICorner",FeedOuter).CornerRadius = UDim.new(0,10)
+        Instance.new("UIStroke",FeedOuter).Color = C.border
+
+        local FeedScroll = Instance.new("ScrollingFrame",FeedOuter)
+        FeedScroll.Size = UDim2.new(1,0,1,0); FeedScroll.BackgroundTransparency = 1
+        FeedScroll.BorderSizePixel = 0; FeedScroll.ScrollBarThickness = 3
+        FeedScroll.ScrollBarImageColor3 = C.accent; FeedScroll.CanvasSize = UDim2.new(0,0,0,0)
+        FeedScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        local FeedLayout = Instance.new("UIListLayout",FeedScroll)
+        FeedLayout.SortOrder = Enum.SortOrder.LayoutOrder; FeedLayout.Padding = UDim.new(0,2)
+        local FeedPad = Instance.new("UIPadding",FeedScroll)
+        FeedPad.PaddingLeft = UDim.new(0,6); FeedPad.PaddingRight = UDim.new(0,6)
+
+        local function addLine(user, text, server, isSystem)
+            local row = Instance.new("Frame",FeedScroll)
+            row.Size = UDim2.new(1,0,0,0); row.AutomaticSize = Enum.AutomaticSize.Y
+            row.BackgroundTransparency = 1; row.LayoutOrder = #FeedScroll:GetChildren()
+            local lbl = Instance.new("TextLabel",row)
+            lbl.Size = UDim2.new(1,0,0,0); lbl.AutomaticSize = Enum.AutomaticSize.Y
+            lbl.BackgroundTransparency = 1; lbl.TextWrapped = true
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+            lbl.Font = Enum.Font.Code; lbl.TextSize = 10
+            if isSystem then
+                lbl.TextColor3 = C.sub; lbl.Text = "— "..text
+            else
+                lbl.TextColor3 = C.text
+                lbl.Text = "["..tostring(server or "?").."] "..tostring(user or "Anon")..": "..tostring(text)
+            end
+            task.defer(function()
+                FeedScroll.CanvasPosition = Vector2.new(0, FeedLayout.AbsoluteContentSize.Y)
+            end)
+        end
+
+        -- input
+        local InputCard = Instance.new("Frame",T._page)
+        InputCard.Size = UDim2.new(1,-10,0,36); InputCard.BackgroundColor3 = C.card
+        InputCard.BorderSizePixel = 0; InputCard.LayoutOrder = 3
+        Instance.new("UICorner",InputCard).CornerRadius = UDim.new(0,10)
+        Instance.new("UIStroke",InputCard).Color = C.border
+
+        local ChatInput = Instance.new("TextBox",InputCard)
+        ChatInput.Size = UDim2.new(1,-56,1,-8); ChatInput.Position = UDim2.new(0,8,0,4)
+        ChatInput.BackgroundColor3 = Color3.fromRGB(18,18,26); ChatInput.BorderSizePixel = 0
+        ChatInput.TextColor3 = C.text; ChatInput.Font = Enum.Font.Gotham; ChatInput.TextSize = 10
+        ChatInput.PlaceholderText = "Type a message..."; ChatInput.Text = ""
+        ChatInput.ClearTextOnFocus = false; ChatInput.ClipsDescendants = true
+        Instance.new("UICorner",ChatInput).CornerRadius = UDim.new(0,6)
+        Instance.new("UIPadding",ChatInput).PaddingLeft = UDim.new(0,6)
+
+        local SendBtn = Instance.new("TextButton",InputCard)
+        SendBtn.Size = UDim2.new(0,44,1,-8); SendBtn.Position = UDim2.new(1,-50,0,4)
+        SendBtn.BackgroundColor3 = C.accent; SendBtn.BorderSizePixel = 0
+        SendBtn.TextColor3 = Color3.fromRGB(255,255,255); SendBtn.Font = Enum.Font.GothamBold
+        SendBtn.TextSize = 10; SendBtn.Text = "Send"
+        Instance.new("UICorner",SendBtn).CornerRadius = UDim.new(0,6)
+
+        local OnlineCard = Instance.new("Frame",T._page)
+        OnlineCard.Size = UDim2.new(1,-10,0,20); OnlineCard.BackgroundTransparency = 1
+        OnlineCard.LayoutOrder = 4
+        local OnlineLbl = Instance.new("TextLabel",OnlineCard)
+        OnlineLbl.Size = UDim2.new(1,0,1,0); OnlineLbl.BackgroundTransparency = 1
+        OnlineLbl.TextColor3 = C.sub; OnlineLbl.Font = Enum.Font.Gotham; OnlineLbl.TextSize = 9
+        OnlineLbl.TextXAlignment = Enum.TextXAlignment.Left
+        OnlineLbl.Text = "🟡 Connecting..."
+
+        local function shortSrv()
+            local j = game.JobId
+            return j ~= "" and j:sub(1,5) or "local"
+        end
+
+        local function doSend(text)
+            if text == "" then return end
+            local payload = HS:JSONEncode({
+                user   = "Anonymous",
+                server = shortSrv(),
+                text   = text,
+                time   = os.time(),
+            })
+            local ok, res = pcall(httpRequest, {
+                Url     = firebaseUrl..".json",
+                Method  = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body    = payload,
+            })
+            if not ok or not res then
+                addLine(nil, "❌ Send failed: "..tostring(res), nil, true)
+            elseif res.StatusCode and res.StatusCode >= 400 then
+                addLine(nil, "❌ HTTP "..res.StatusCode, nil, true)
+            end
+        end
+
+        SendBtn.MouseButton1Click:Connect(function()
+            local txt = ChatInput.Text:match("^%s*(.-)%s*$")
+            if txt == "" then return end
+            doSend(txt); ChatInput.Text = ""
+        end)
+        ChatInput.FocusLost:Connect(function(enter)
+            if enter then
+                local txt = ChatInput.Text:match("^%s*(.-)%s*$")
+                if txt ~= "" then doSend(txt); ChatInput.Text = "" end
+            end
+        end)
+
+        -- poll
+        task.spawn(function()
+            _G.NexusLib_ChatGen = (_G.NexusLib_ChatGen or 0) + 1
+            local myGen = _G.NexusLib_ChatGen
+            local seen = {}
+
+            local function fetch()
+                local ok, res = pcall(httpRequest, {
+                    Url     = firebaseUrl..".json",
+                    Method  = "GET",
+                    Headers = { ["Accept"] = "application/json" },
+                })
+                if not ok or not res or not res.Body or res.Body == "" or res.Body == "null" then return false end
+                local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
+                if not ok2 or type(data) ~= "table" then return false end
+                local msgs = {}
+                for key, v in pairs(data) do
+                    if type(v) == "table" and v.time and not seen[key] then
+                        table.insert(msgs, {key=key,user=v.user,server=v.server,text=v.text,time=v.time})
+                    end
+                end
+                table.sort(msgs, function(a,b) return a.time < b.time end)
+                local start = math.max(1, #msgs - 29)
+                for i = start, #msgs do
+                    seen[msgs[i].key] = true
+                    addLine(msgs[i].user, msgs[i].text, msgs[i].server, false)
+                end
+                return #msgs > 0
+            end
+
+            fetch()
+            OnlineLbl.Text = "🟢 Live"
+
+            while true do
+                if _G.NexusLib_ChatGen ~= myGen then break end
+                task.wait(3)
+                if _G.NexusLib_ChatGen ~= myGen then break end
+                fetch()
+            end
+        end)
+    end
+
+    -- ============================================================
+    --  BUILT-IN: Player Tab (jump, speed, anti afk)
+    -- ============================================================
+    function Win:PlayerTab()
+        local T = self:Tab("👤","Player")
+        local runGen = newGen()
+
+        T:Section("Movement")
+
+        -- Walk Speed
+        local speedRef = { val = 16 }
+        T:Slider("Walk Speed","Default 16 · Max 300",{min=0,max=300,default=16}, function(v)
+            speedRef.val = v
+            local h = getHuman()
+            if h then h.WalkSpeed = v end
+        end)
+
+        -- Inf Jump
+        T:Toggle("🚀 Infinite Jump","Jump again while airborne", false, function(on)
+            local myGen = newGen(); runGen = myGen
+            if on then
+                local conn; conn = UserInputService.JumpRequest:Connect(function()
+                    if runGen ~= myGen then conn:Disconnect(); return end
+                    local h = getHuman()
+                    if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+                end)
+            end
+        end)
+
+        -- Walk speed reapply on respawn
+        Players.LocalPlayer.CharacterAdded:Connect(function(char)
+            local h = char:WaitForChild("Humanoid", 5)
+            if h then h.WalkSpeed = speedRef.val end
+        end)
+
+        T:Section("Utility")
+
+        -- Anti AFK
+        T:Toggle("⏱️ Anti AFK","Prevents auto-kick every 55s", false, function(on)
+            local myGen = newGen(); runGen = myGen
+            if on then
+                task.spawn(function()
+                    local VU = game:GetService("VirtualUser")
+                    while true do
+                        if runGen ~= myGen then break end
+                        task.wait(55)
+                        if runGen ~= myGen then break end
+                        VU:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                        task.wait(0.1)
+                        VU:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                    end
+                end)
+            end
+        end)
+
+        -- Noclip
+        T:Toggle("👻 No Clip","Walk through walls", false, function(on)
+            local myGen = newGen(); runGen = myGen
+            if on then
+                local conn; conn = RunService.Stepped:Connect(function()
+                    if runGen ~= myGen then conn:Disconnect(); return end
+                    local c = getChar()
+                    if c then
+                        for _, p in pairs(c:GetDescendants()) do
+                            if p:IsA("BasePart") then p.CanCollide = false end
+                        end
+                    end
+                end)
+            end
+        end)
+
+        -- God Mode
+        T:Toggle("🛡️ God Mode","Lock health to max", false, function(on)
+            local myGen = newGen(); runGen = myGen
+            if on then
+                task.spawn(function()
+                    while true do
+                        if runGen ~= myGen then break end
+                        local h = getHuman()
+                        if h then h.Health = h.MaxHealth end
+                        task.wait(0.1)
+                    end
+                end)
+            end
+        end)
+
+        T:Section("Actions")
+
+        T:Button("🔄","Respawn","Reset character", C.purple, function()
+            local h = getHuman()
+            if h then h.Health = 0 end
+        end)
+
+        T:Button("📋","Print Position","Prints XYZ to output", C.accent, function()
+            local r = getRoot()
+            if r then
+                local p = r.Position
+                print(string.format("[NexusLib] Position: X=%.1f Y=%.1f Z=%.1f", p.X, p.Y, p.Z))
+            end
+        end)
+
+        return T
+    end
+
+    -- first tab auto-shown when Win:Tab is first called, so just return Win
+    return Win
+end
+
+return NexusLib
