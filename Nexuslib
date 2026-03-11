@@ -181,10 +181,23 @@ function NexusLib:Window(cfg)
     SDot.BackgroundColor3 = C.accent; SDot.BorderSizePixel = 0
     Instance.new("UICorner",SDot).CornerRadius = UDim.new(1,0)
     local SLbl = Instance.new("TextLabel", StatusBar)
-    SLbl.Text = "Ready · NexusLib v1.0"; SLbl.Size = UDim2.new(1,-22,1,0)
+    SLbl.Text = "Ready · NexusLib v1.0"; SLbl.Size = UDim2.new(1,-115,1,0)
     SLbl.Position = UDim2.new(0,20,0,0); SLbl.BackgroundTransparency = 1
     SLbl.TextColor3 = C.sub; SLbl.Font = Enum.Font.Code; SLbl.TextSize = 9
     SLbl.TextXAlignment = Enum.TextXAlignment.Left
+    -- right side: live online count
+    local OnlineCountLbl = Instance.new("TextLabel", StatusBar)
+    OnlineCountLbl.Name = "OnlineCount"
+    OnlineCountLbl.Size = UDim2.new(0,100,1,0)
+    OnlineCountLbl.Position = UDim2.new(1,-6,0.5,0)
+    OnlineCountLbl.AnchorPoint = Vector2.new(1,0.5)
+    OnlineCountLbl.BackgroundTransparency = 1
+    OnlineCountLbl.Text = "🟢 ..."
+    OnlineCountLbl.TextColor3 = Color3.fromRGB(0,200,100)
+    OnlineCountLbl.Font = Enum.Font.GothamBold
+    OnlineCountLbl.TextSize = 9
+    OnlineCountLbl.TextXAlignment = Enum.TextXAlignment.Right
+    OnlineCountLbl.ZIndex = 10
 
     -- ── Tab system ───────────────────────────────────────────
     local tabs = {}
@@ -212,47 +225,26 @@ function NexusLib:Window(cfg)
 
     -- ── Window object ────────────────────────────────────────
     local PRESENCE_URL = "https://anipixels-chat-default-rtdb.firebaseio.com/presence"
-    local _presenceKey = nil  -- our own Firebase key so we can update it
+    -- Fixed key per player = re-executing overwrites same slot, never duplicates
+    local MY_KEY = tostring(LP.UserId)
 
     local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab }
 
     function Win:Status(msg) SLbl.Text = msg end
 
-    -- ── Live user count ───────────────────────────────────────
-    -- Writes a heartbeat to Firebase every 20s. Counts entries
-    -- with a timestamp within the last 60s = currently online.
+    -- ── Live user count (right side of status bar) ────────────
     local function startPresence()
         _G.NexusLib_PresenceGen = (_G.NexusLib_PresenceGen or 0) + 1
         local myGen = _G.NexusLib_PresenceGen
+        local serverID = game.JobId ~= "" and game.JobId:sub(1,8) or "studio"
 
-        local function writeHeartbeat()
-            local payload = HS:JSONEncode({
-                t = os.time(),
-                s = game.JobId ~= "" and game.JobId:sub(1,8) or "studio",
+        local function upsert()
+            pcall(httpRequest, {
+                Url     = PRESENCE_URL.."/"..MY_KEY..".json",
+                Method  = "PUT",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body    = '{"t":' .. os.time() .. ',"s":"' .. serverID .. '"}',
             })
-            if _presenceKey then
-                -- update existing entry
-                pcall(httpRequest, {
-                    Url     = PRESENCE_URL.."/"..tostring(_presenceKey)..".json",
-                    Method  = "PATCH",
-                    Headers = { ["Content-Type"] = "application/json" },
-                    Body    = payload,
-                })
-            else
-                -- first write — POST returns a new key
-                local ok, res = pcall(httpRequest, {
-                    Url     = PRESENCE_URL..".json",
-                    Method  = "POST",
-                    Headers = { ["Content-Type"] = "application/json" },
-                    Body    = payload,
-                })
-                if ok and res and res.Body then
-                    local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
-                    if ok2 and data and data.name then
-                        _presenceKey = data.name
-                    end
-                end
-            end
         end
 
         local function countOnline()
@@ -262,66 +254,40 @@ function NexusLib:Window(cfg)
                 Headers = { ["Accept"] = "application/json" },
             })
             if not ok or not res or not res.Body or res.Body == "null" or res.Body == "" then
-                return 0
+                return 1
             end
             local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
-            if not ok2 or type(data) ~= "table" then return 0 end
+            if not ok2 or type(data) ~= "table" then return 1 end
             local now = os.time()
             local count = 0
             for _, v in pairs(data) do
-                if type(v) == "table" and v.t and (now - v.t) <= 60 then
+                if type(v) == "table" and v.t and (now - v.t) <= 45 then
                     count = count + 1
                 end
             end
-            return count
-        end
-
-        -- prune stale entries older than 5 minutes so DB doesn't bloat
-        local function pruneStale()
-            local ok, res = pcall(httpRequest, {
-                Url     = PRESENCE_URL..".json",
-                Method  = "GET",
-                Headers = { ["Accept"] = "application/json" },
-            })
-            if not ok or not res or not res.Body or res.Body == "null" then return end
-            local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
-            if not ok2 or type(data) ~= "table" then return end
-            local now = os.time()
-            for key, v in pairs(data) do
-                if type(v) == "table" and v.t and (now - v.t) > 300 then
-                    pcall(httpRequest, {
-                        Url    = PRESENCE_URL.."/"..tostring(key)..".json",
-                        Method = "DELETE",
-                    })
-                end
-            end
+            return math.max(1, count)
         end
 
         task.spawn(function()
-            writeHeartbeat()
+            upsert()
             local count = countOnline()
-            SLbl.Text = "🟢 "..count.." online · NexusLib v1.0"
+            OnlineCountLbl.Text = "🟢 "..count.." online"
 
-            local tick = 0
             while true do
                 if _G.NexusLib_PresenceGen ~= myGen then
-                    -- clean up our own entry on re-exec
-                    if _presenceKey then
-                        pcall(httpRequest, {
-                            Url    = PRESENCE_URL.."/"..tostring(_presenceKey)..".json",
-                            Method = "DELETE",
-                        })
-                        _presenceKey = nil
-                    end
+                    -- zero out our timestamp so we drop out of TTL instantly
+                    pcall(httpRequest, {
+                        Url     = PRESENCE_URL.."/"..MY_KEY..".json",
+                        Method  = "PUT",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body    = '{"t":0,"s":"gone"}',
+                    })
                     break
                 end
                 task.wait(20)
-                writeHeartbeat()
+                upsert()
                 count = countOnline()
-                SLbl.Text = "🟢 "..count.." online · NexusLib v1.0"
-                tick = tick + 1
-                -- prune stale entries every 5 cycles (~100s)
-                if tick % 5 == 0 then task.spawn(pruneStale) end
+                OnlineCountLbl.Text = "🟢 "..count.." online"
             end
         end)
     end
