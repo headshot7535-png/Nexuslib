@@ -1,5 +1,5 @@
 -- ============================================================
---  NexusLib v1.0  |  GUI Library
+--  NexusLib v1.1  |  GUI Library (optimized + MergeTab)
 --  Usage:
 --    local Lib = loadstring(game:HttpGet("URL"))()
 --    local Win  = Lib:Window({ title="My GUI" })
@@ -9,6 +9,7 @@
 --    Tab:Slider("Walk Speed",{min=0,max=300,default=16}, function(v) end)
 --    Tab:Button("🔄","Respawn","Reset char", function() end)
 --    Win:ChatTab()   -- built-in cross-server chat
+--    Win:MergeTab({ ... })  -- optional merge-style tab
 -- ============================================================
 
 local NexusLib = {}
@@ -34,12 +35,15 @@ local function getChar()  return LP.Character end
 local function getHuman() local c=getChar() return c and c:FindFirstChildOfClass("Humanoid") end
 local function getRoot()  local c=getChar() return c and c:FindFirstChild("HumanoidRootPart") end
 
--- ── HTTP helper ───────────────────────────────────────────────
+-- ── HTTP helper (executor-agnostic) ───────────────────────────
 local function httpRequest(opts)
     local fn = (syn and syn.request)
              or (http and http.request)
              or (http_request)
              or (request)
+             or (HttpPost and function(o)
+                 return { Body = HttpPost(o.Url, o.Body or "", o.Headers and o.Headers["Content-Type"] or "application/json") }
+             end)
     if not fn then return nil end
     return fn(opts)
 end
@@ -181,11 +185,10 @@ function NexusLib:Window(cfg)
     SDot.BackgroundColor3 = C.accent; SDot.BorderSizePixel = 0
     Instance.new("UICorner",SDot).CornerRadius = UDim.new(1,0)
     local SLbl = Instance.new("TextLabel", StatusBar)
-    SLbl.Text = "Ready · NexusLib v1.0"; SLbl.Size = UDim2.new(1,-115,1,0)
+    SLbl.Text = "Ready · NexusLib v1.1"; SLbl.Size = UDim2.new(1,-115,1,0)
     SLbl.Position = UDim2.new(0,20,0,0); SLbl.BackgroundTransparency = 1
     SLbl.TextColor3 = C.sub; SLbl.Font = Enum.Font.Code; SLbl.TextSize = 9
     SLbl.TextXAlignment = Enum.TextXAlignment.Left
-    -- right side: live online count
     local OnlineCountLbl = Instance.new("TextLabel", StatusBar)
     OnlineCountLbl.Name = "OnlineCount"
     OnlineCountLbl.Size = UDim2.new(0,100,1,0)
@@ -223,16 +226,14 @@ function NexusLib:Window(cfg)
         end
     end
 
-    -- ── Window object ────────────────────────────────────────
     local PRESENCE_URL = "https://anipixels-chat-default-rtdb.firebaseio.com/presence"
-    -- Fixed key per player = re-executing overwrites same slot, never duplicates
     local MY_KEY = tostring(LP.UserId)
 
     local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab }
 
     function Win:Status(msg) SLbl.Text = msg end
 
-    -- ── Live user count (right side of status bar) ────────────
+    -- ── Live user count ──────────────────────────────────────
     local function startPresence()
         _G.NexusLib_PresenceGen = (_G.NexusLib_PresenceGen or 0) + 1
         local myGen = _G.NexusLib_PresenceGen
@@ -272,10 +273,8 @@ function NexusLib:Window(cfg)
             upsert()
             local count = countOnline()
             OnlineCountLbl.Text = "🟢 "..count.." online"
-
             while true do
                 if _G.NexusLib_PresenceGen ~= myGen then
-                    -- zero out our timestamp so we drop out of TTL instantly
                     pcall(httpRequest, {
                         Url     = PRESENCE_URL.."/"..MY_KEY..".json",
                         Method  = "PUT",
@@ -291,7 +290,6 @@ function NexusLib:Window(cfg)
             end
         end)
     end
-
     startPresence()
 
     function Win:Tab(icon, name)
@@ -318,7 +316,6 @@ function NexusLib:Window(cfg)
         local order = 0
         local T = { _page=page, _layout=layout }
 
-        -- ── Section label ─────────────────────────────────
         function T:Section(txt)
             order = order + 1
             local f = Instance.new("Frame", page)
@@ -337,7 +334,6 @@ function NexusLib:Window(cfg)
             return f
         end
 
-        -- ── Toggle ────────────────────────────────────────
         function T:Toggle(label, desc, default, cb)
             order = order + 1
             local state = default or false
@@ -392,7 +388,6 @@ function NexusLib:Window(cfg)
                 if cb then cb(on) end
             end
 
-            -- init visual
             if state then
                 Pill.BackgroundColor3 = C.accentD; cs.Color = C.accentD
                 Thumb.Position = UDim2.new(0,23,0.5,-9); Thumb.BackgroundColor3 = C.accent
@@ -413,7 +408,6 @@ function NexusLib:Window(cfg)
             return { Set = setState, Get = function() return state end }
         end
 
-        -- ── Slider ────────────────────────────────────────
         function T:Slider(label, desc, opts, cb)
             order = order + 1
             local minV    = opts.min     or 0
@@ -485,9 +479,7 @@ function NexusLib:Window(cfg)
             return { Get = function() return curVal end }
         end
 
-        -- ── Button ────────────────────────────────────────
         function T:Button(icon, label, desc, accentCol, cb)
-            -- allow omitting accentCol: Button(icon, label, desc, cb)
             if type(accentCol) == "function" then cb = accentCol; accentCol = nil end
             accentCol = accentCol or C.accent
             order = order + 1
@@ -521,7 +513,6 @@ function NexusLib:Window(cfg)
             return Card
         end
 
-        -- ── Label ─────────────────────────────────────────
         function T:Label(txt)
             order = order + 1
             local f = Instance.new("Frame", page)
@@ -538,13 +529,12 @@ function NexusLib:Window(cfg)
     end
 
     -- ============================================================
-    --  BUILT-IN: Chat Tab (Firebase cross-server)
+    --  BUILT-IN: Chat Tab (optimized: cap seen keys)
     -- ============================================================
     function Win:ChatTab(firebaseUrl)
         firebaseUrl = firebaseUrl or "https://anipixels-chat-default-rtdb.firebaseio.com/chat"
         local T = self:Tab("💬","Chat")
 
-        -- info bar
         local InfoCard = Instance.new("Frame", T._page)
         InfoCard.Size = UDim2.new(1,-10,0,28); InfoCard.BackgroundColor3 = Color3.fromRGB(30,30,45)
         InfoCard.BorderSizePixel = 0; InfoCard.LayoutOrder = 1
@@ -556,7 +546,6 @@ function NexusLib:Window(cfg)
         InfoLbl.TextXAlignment = Enum.TextXAlignment.Left
         InfoLbl.Text = "💬 Cross-server chat"
 
-        -- feed
         local FeedOuter = Instance.new("Frame", T._page)
         FeedOuter.Size = UDim2.new(1,-10,0,200); FeedOuter.BackgroundColor3 = Color3.fromRGB(14,14,22)
         FeedOuter.BorderSizePixel = 0; FeedOuter.LayoutOrder = 2; FeedOuter.ClipsDescendants = true
@@ -593,7 +582,6 @@ function NexusLib:Window(cfg)
             end)
         end
 
-        -- input
         local InputCard = Instance.new("Frame",T._page)
         InputCard.Size = UDim2.new(1,-10,0,36); InputCard.BackgroundColor3 = C.card
         InputCard.BorderSizePixel = 0; InputCard.LayoutOrder = 3
@@ -663,11 +651,21 @@ function NexusLib:Window(cfg)
             end
         end)
 
-        -- poll
+        -- poll (cap seen to 500 keys to avoid unbounded growth)
+        local SEEN_CAP = 500
+        local seenKeys = {}
+        local seenOrder = {}
+
+        local function pruneSeen()
+            while #seenOrder > SEEN_CAP do
+                local k = table.remove(seenOrder, 1)
+                seenKeys[k] = nil
+            end
+        end
+
         task.spawn(function()
             _G.NexusLib_ChatGen = (_G.NexusLib_ChatGen or 0) + 1
             local myGen = _G.NexusLib_ChatGen
-            local seen = {}
 
             local function fetch()
                 local ok, res = pcall(httpRequest, {
@@ -680,16 +678,18 @@ function NexusLib:Window(cfg)
                 if not ok2 or type(data) ~= "table" then return false end
                 local msgs = {}
                 for key, v in pairs(data) do
-                    if type(v) == "table" and v.time and not seen[key] then
+                    if type(v) == "table" and v.time and not seenKeys[key] then
                         table.insert(msgs, {key=key,user=v.user,server=v.server,text=v.text,time=v.time})
                     end
                 end
                 table.sort(msgs, function(a,b) return a.time < b.time end)
-                local start = math.max(1, #msgs - 29)
-                for i = start, #msgs do
-                    seen[msgs[i].key] = true
-                    addLine(msgs[i].user, msgs[i].text, msgs[i].server, false)
+                for i = 1, #msgs do
+                    local m = msgs[i]
+                    seenKeys[m.key] = true
+                    table.insert(seenOrder, m.key)
+                    addLine(m.user, m.text, m.server, false)
                 end
+                pruneSeen()
                 return #msgs > 0
             end
 
@@ -706,7 +706,234 @@ function NexusLib:Window(cfg)
     end
 
     -- ============================================================
-    --  BUILT-IN: Player Tab (jump, speed, anti afk)
+    --  BUILT-IN: Merge Tab (game-agnostic; data via callbacks)
+    -- ============================================================
+    -- opts: statusTitle, getStatusText, getChainText, isActive, onToggle,
+    --       thresholdLabel, thresholdMin, thresholdMax, thresholdDefault, onThreshold,
+    --       searchPlaceholder, getListItems (filter) -> { {id, label, sublabel, selected}, ... }, onSelectItem(id, selected),
+    --       secondToggle = { label, sublabel, default, onToggle } (optional)
+    function Win:MergeTab(opts)
+        opts = opts or {}
+        local T = self:Tab("🔀", "Merge")
+        local page, layout = T._page, T._layout
+
+        -- Status card
+        local statusTitle = opts.statusTitle or "Auto Merge"
+        local statusLbl = Instance.new("TextLabel", page)
+        statusLbl.Text = statusTitle
+        statusLbl.Size = UDim2.new(1,-100,0,18); statusLbl.Position = UDim2.new(0,14,0,8)
+        statusLbl.BackgroundTransparency = 1; statusLbl.TextColor3 = C.text
+        statusLbl.Font = Enum.Font.GothamBold; statusLbl.TextSize = 13; statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+        statusLbl.LayoutOrder = 1
+
+        local statusText = Instance.new("TextLabel", page)
+        statusText.Text = (opts.getStatusText and opts.getStatusText()) or "OFF"
+        statusText.Size = UDim2.new(1,-100,0,13); statusText.Position = UDim2.new(0,14,0,28)
+        statusText.BackgroundTransparency = 1; statusText.TextColor3 = C.sub
+        statusText.Font = Enum.Font.Code; statusText.TextSize = 9; statusText.TextXAlignment = Enum.TextXAlignment.Left
+        statusText.LayoutOrder = 2
+
+        local chainLbl = Instance.new("TextLabel", page)
+        chainLbl.Text = (opts.getChainText and opts.getChainText()) or "Chain: —"
+        chainLbl.Size = UDim2.new(1,-100,0,12); chainLbl.Position = UDim2.new(0,14,0,44)
+        chainLbl.BackgroundTransparency = 1; chainLbl.TextColor3 = C.green
+        chainLbl.Font = Enum.Font.Code; chainLbl.TextSize = 9; chainLbl.TextXAlignment = Enum.TextXAlignment.Left
+        chainLbl.LayoutOrder = 3
+
+        local statusCard = Instance.new("Frame", page)
+        statusCard.Size = UDim2.new(1,-10,0,70); statusCard.BackgroundColor3 = C.card
+        statusCard.BorderSizePixel = 0; statusCard.LayoutOrder = 0
+        Instance.new("UICorner", statusCard).CornerRadius = UDim.new(0,10)
+        local statusStroke = Instance.new("UIStroke", statusCard); statusStroke.Color = C.border; statusStroke.Thickness = 1
+        statusLbl.Parent = statusCard; statusLbl.Position = UDim2.new(0,14,0,8); statusLbl.Size = UDim2.new(1,-100,0,18)
+        statusText.Parent = statusCard; statusText.Position = UDim2.new(0,14,0,28); statusText.Size = UDim2.new(1,-100,0,13)
+        chainLbl.Parent = statusCard; chainLbl.Position = UDim2.new(0,14,0,44); chainLbl.Size = UDim2.new(1,-100,0,12)
+
+        local Pill = Instance.new("Frame", statusCard)
+        Pill.Size = UDim2.new(0,44,0,24); Pill.Position = UDim2.new(1,-50,0.5,-12)
+        Pill.BackgroundColor3 = C.border; Pill.BorderSizePixel = 0
+        Instance.new("UICorner", Pill).CornerRadius = UDim.new(1,0)
+        local Thumb = Instance.new("Frame", Pill)
+        Thumb.Size = UDim2.new(0,18,0,18); Thumb.Position = UDim2.new(0,3,0.5,-9)
+        Thumb.BackgroundColor3 = C.sub; Thumb.BorderSizePixel = 0
+        Instance.new("UICorner", Thumb).CornerRadius = UDim.new(1,0)
+        local mti = TweenInfo.new(0.18, Enum.EasingStyle.Quad)
+
+        local function setMerge(on)
+            if opts.onToggle then opts.onToggle(on) end
+            if on then
+                TweenService:Create(Pill, mti, {BackgroundColor3 = C.green}):Play()
+                TweenService:Create(Thumb, mti, {Position = UDim2.new(0,23,0.5,-9), BackgroundColor3 = C.green}):Play()
+                statusStroke.Color = C.green; statusLbl.TextColor3 = C.green
+            else
+                TweenService:Create(Pill, mti, {BackgroundColor3 = C.border}):Play()
+                TweenService:Create(Thumb, mti, {Position = UDim2.new(0,3,0.5,-9), BackgroundColor3 = C.sub}):Play()
+                statusStroke.Color = C.border; statusLbl.TextColor3 = C.text
+            end
+            if opts.getStatusText then statusText.Text = opts.getStatusText() end
+        end
+
+        local active = opts.isActive and opts.isActive() or false
+        if active then
+            Pill.BackgroundColor3 = C.green; Thumb.Position = UDim2.new(0,23,0.5,-9); Thumb.BackgroundColor3 = C.green
+            statusStroke.Color = C.green; statusLbl.TextColor3 = C.green
+        end
+        local PillBtn = Instance.new("TextButton", Pill)
+        PillBtn.Size = UDim2.new(1,0,1,0); PillBtn.BackgroundTransparency = 1; PillBtn.Text = ""; PillBtn.ZIndex = 3
+        PillBtn.MouseButton1Click:Connect(function()
+            setMerge(not (opts.isActive and opts.isActive() or false))
+            if opts.getStatusText then statusText.Text = opts.getStatusText() end
+        end)
+
+        -- Optional second toggle (e.g. Titan)
+        if opts.secondToggle and opts.secondToggle.label then
+            local st = opts.secondToggle
+            local card2 = Instance.new("Frame", page)
+            card2.Size = UDim2.new(1,-10,0,52); card2.BackgroundColor3 = C.card; card2.BorderSizePixel = 0; card2.LayoutOrder = 4
+            Instance.new("UICorner", card2).CornerRadius = UDim.new(0,12)
+            local stStroke = Instance.new("UIStroke", card2); stStroke.Color = C.border
+            local tTitle = Instance.new("TextLabel", card2)
+            tTitle.Text = st.label; tTitle.Size = UDim2.new(1,-60,0,20); tTitle.Position = UDim2.new(0,12,0,8)
+            tTitle.BackgroundTransparency = 1; tTitle.TextColor3 = C.text; tTitle.Font = Enum.Font.GothamBold; tTitle.TextSize = 11; tTitle.TextXAlignment = Enum.TextXAlignment.Left
+            local tSub = Instance.new("TextLabel", card2)
+            tSub.Text = st.sublabel or ""; tSub.Size = UDim2.new(1,-60,0,16); tSub.Position = UDim2.new(0,12,0,28)
+            tSub.BackgroundTransparency = 1; tSub.TextColor3 = C.sub; tSub.Font = Enum.Font.Gotham; tSub.TextSize = 9; tSub.TextXAlignment = Enum.TextXAlignment.Left
+            local tPill = Instance.new("Frame", card2); tPill.Size = UDim2.new(0,46,0,24); tPill.Position = UDim2.new(1,-58,0.5,-12)
+            tPill.BackgroundColor3 = C.border; tPill.BorderSizePixel = 0
+            Instance.new("UICorner", tPill).CornerRadius = UDim.new(1,0)
+            local tThumb = Instance.new("Frame", tPill); tThumb.Size = UDim2.new(0,18,0,18); tThumb.Position = UDim2.new(0,3,0.5,-9); tThumb.BackgroundColor3 = C.sub; tThumb.BorderSizePixel = 0
+            Instance.new("UICorner", tThumb).CornerRadius = UDim.new(1,0)
+            local tti = TweenInfo.new(0.2)
+            local function setTitan(on)
+                if st.onToggle then st.onToggle(on) end
+                if on then
+                    TweenService:Create(tPill, tti, {BackgroundColor3 = C.green}):Play()
+                    TweenService:Create(tThumb, tti, {Position = UDim2.new(0,25,0.5,-9), BackgroundColor3 = C.green}):Play()
+                    stStroke.Color = C.green; tTitle.TextColor3 = C.green
+                else
+                    TweenService:Create(tPill, tti, {BackgroundColor3 = C.border}):Play()
+                    TweenService:Create(tThumb, tti, {Position = UDim2.new(0,3,0.5,-9), BackgroundColor3 = C.sub}):Play()
+                    stStroke.Color = C.border; tTitle.TextColor3 = C.text
+                end
+            end
+            local secondState = st.default or false
+            if secondState then
+                tPill.BackgroundColor3 = C.green; tThumb.Position = UDim2.new(0,25,0.5,-9); tThumb.BackgroundColor3 = C.green; stStroke.Color = C.green; tTitle.TextColor3 = C.green
+            end
+            local tBtn = Instance.new("TextButton", card2); tBtn.Size = UDim2.new(1,0,1,0); tBtn.BackgroundTransparency = 1; tBtn.Text = ""; tBtn.ZIndex = 3
+            tBtn.MouseButton1Click:Connect(function()
+                secondState = not secondState
+                setTitan(secondState)
+            end)
+        end
+
+        -- Threshold slider
+        local thMin = opts.thresholdMin or 4
+        local thMax = opts.thresholdMax or 40
+        local thDefault = opts.thresholdDefault or 20
+        local thCard = Instance.new("Frame", page)
+        thCard.Size = UDim2.new(1,-10,0,58); thCard.BackgroundColor3 = C.card; thCard.BorderSizePixel = 0; thCard.LayoutOrder = 5
+        Instance.new("UICorner", thCard).CornerRadius = UDim.new(0,10)
+        Instance.new("UIStroke", thCard).Color = C.border
+        local thn = Instance.new("TextLabel", thCard)
+        thn.Text = opts.thresholdLabel or "Merge Threshold"; thn.Size = UDim2.new(1,-80,0,18); thn.Position = UDim2.new(0,14,0,6)
+        thn.BackgroundTransparency = 1; thn.TextColor3 = C.text; thn.Font = Enum.Font.GothamBold; thn.TextSize = 12; thn.TextXAlignment = Enum.TextXAlignment.Left
+        local thv = Instance.new("TextLabel", thCard)
+        thv.Text = "x"..thDefault; thv.Size = UDim2.new(0,60,0,18); thv.Position = UDim2.new(1,-68,0,6)
+        thv.BackgroundTransparency = 1; thv.TextColor3 = C.accent; thv.Font = Enum.Font.Code; thv.TextSize = 13; thv.TextXAlignment = Enum.TextXAlignment.Right
+        local thTrack = Instance.new("Frame", thCard)
+        thTrack.Size = UDim2.new(1,-28,0,6); thTrack.Position = UDim2.new(0,14,0,42); thTrack.BackgroundColor3 = C.panel; thTrack.BorderSizePixel = 0
+        Instance.new("UICorner", thTrack).CornerRadius = UDim.new(1,0)
+        local thPct = (thDefault - thMin) / (thMax - thMin)
+        local thFill = Instance.new("Frame", thTrack); thFill.Size = UDim2.new(thPct,0,1,0); thFill.BackgroundColor3 = C.accent; thFill.BorderSizePixel = 0
+        Instance.new("UICorner", thFill).CornerRadius = UDim.new(1,0)
+        local thKnob = Instance.new("TextButton", thTrack); thKnob.Text = ""; thKnob.Size = UDim2.new(0,16,0,16); thKnob.AnchorPoint = Vector2.new(0.5,0.5)
+        thKnob.Position = UDim2.new(thPct,0,0.5,0); thKnob.BackgroundColor3 = Color3.fromRGB(255,255,255); thKnob.BorderSizePixel = 0; thKnob.ZIndex = 4
+        Instance.new("UICorner", thKnob).CornerRadius = UDim.new(1,0)
+        local thDrag = false
+        local function thApply(ix)
+            local rel = math.clamp(ix - thTrack.AbsolutePosition.X, 0, thTrack.AbsoluteSize.X)
+            local p = rel / thTrack.AbsoluteSize.X
+            local v = thMin + math.round((thMax - thMin) * p)
+            thFill.Size = UDim2.new(p,0,1,0); thKnob.Position = UDim2.new(p,0,0.5,0)
+            thv.Text = "x"..v
+            if opts.onThreshold then opts.onThreshold(v) end
+        end
+        thKnob.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then thDrag = true end end)
+        UserInputService.InputChanged:Connect(function(i) if thDrag and i.UserInputType == Enum.UserInputType.MouseMovement then thApply(i.Position.X) end end)
+        UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then thDrag = false end end)
+        thTrack.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then thApply(i.Position.X) end end)
+
+        -- Search + list
+        local searchPlaceholder = opts.searchPlaceholder or "Search..."
+        local searchCard = Instance.new("Frame", page)
+        searchCard.Size = UDim2.new(1,-10,0,38); searchCard.BackgroundColor3 = C.card; searchCard.BorderSizePixel = 0; searchCard.LayoutOrder = 6
+        Instance.new("UICorner", searchCard).CornerRadius = UDim.new(0,10)
+        Instance.new("UIStroke", searchCard).Color = C.border
+        local searchIcon = Instance.new("TextLabel", searchCard); searchIcon.Text = "🔍"; searchIcon.Size = UDim2.new(0,30,1,0); searchIcon.Position = UDim2.new(0,4,0,0)
+        searchIcon.BackgroundTransparency = 1; searchIcon.TextSize = 14; searchIcon.Font = Enum.Font.GothamBold; searchIcon.TextXAlignment = Enum.TextXAlignment.Center
+        local searchBox = Instance.new("TextBox", searchCard)
+        searchBox.Size = UDim2.new(1,-70,1,-10); searchBox.Position = UDim2.new(0,34,0,5)
+        searchBox.BackgroundTransparency = 1; searchBox.TextColor3 = C.text; searchBox.PlaceholderText = searchPlaceholder; searchBox.PlaceholderColor3 = C.sub
+        searchBox.Font = Enum.Font.Gotham; searchBox.TextSize = 11; searchBox.BorderSizePixel = 0; searchBox.TextXAlignment = Enum.TextXAlignment.Left; searchBox.ClearTextOnFocus = false
+        local refreshBtn = Instance.new("TextButton", searchCard); refreshBtn.Text = "↻"; refreshBtn.Size = UDim2.new(0,28,0,22); refreshBtn.Position = UDim2.new(1,-32,0.5,-11)
+        refreshBtn.BackgroundColor3 = Color3.fromRGB(0,70,35); refreshBtn.TextColor3 = C.green; refreshBtn.Font = Enum.Font.GothamBold; refreshBtn.TextSize = 13; refreshBtn.BorderSizePixel = 0
+        Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0,6)
+
+        local listCard = Instance.new("Frame", page)
+        listCard.Size = UDim2.new(1,-10,0,200); listCard.BackgroundColor3 = C.card; listCard.BorderSizePixel = 0; listCard.LayoutOrder = 7; listCard.ClipsDescendants = true
+        Instance.new("UICorner", listCard).CornerRadius = UDim.new(0,10)
+        Instance.new("UIStroke", listCard).Color = C.border
+        local listScroll = Instance.new("ScrollingFrame", listCard)
+        listScroll.Size = UDim2.new(1,-6,1,-6); listScroll.Position = UDim2.new(0,3,0,3)
+        listScroll.BackgroundTransparency = 1; listScroll.BorderSizePixel = 0
+        listScroll.ScrollBarThickness = 3; listScroll.ScrollBarImageColor3 = C.green
+        listScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; listScroll.CanvasSize = UDim2.new(0,0,0,0)
+        local listLayout = Instance.new("UIListLayout", listScroll); listLayout.Padding = UDim.new(0,3); listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local function buildList(filter)
+            filter = filter or ""
+            for _, c in pairs(listScroll:GetChildren()) do
+                if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
+            end
+            local items = (opts.getListItems and opts.getListItems(filter)) or {}
+            for i, item in ipairs(items) do
+                local id = item.id or item.label
+                local label = item.label or id
+                local sublabel = item.sublabel or ""
+                local selected = item.selected
+                local btn = Instance.new("TextButton", listScroll)
+                btn.Size = UDim2.new(1,-4,0,28); btn.LayoutOrder = i
+                btn.BackgroundColor3 = selected and Color3.fromRGB(0,55,28) or Color3.fromRGB(10,15,22)
+                btn.TextColor3 = C.text; btn.BorderSizePixel = 0; btn.Font = Enum.Font.GothamBold; btn.TextSize = 0
+                Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
+                local nLbl = Instance.new("TextLabel", btn); nLbl.Name = "nameLbl"; nLbl.Text = label; nLbl.Size = UDim2.new(0.5,-4,1,0); nLbl.Position = UDim2.new(0,8,0,0)
+                nLbl.BackgroundTransparency = 1; nLbl.TextColor3 = selected and C.green or C.text; nLbl.Font = Enum.Font.GothamBold; nLbl.TextSize = 10; nLbl.TextXAlignment = Enum.TextXAlignment.Left
+                local cLbl = Instance.new("TextLabel", btn); cLbl.Text = sublabel; cLbl.Size = UDim2.new(0.5,-8,1,0); cLbl.Position = UDim2.new(0.5,0,0,0)
+                cLbl.BackgroundTransparency = 1; cLbl.TextColor3 = C.sub; cLbl.Font = Enum.Font.Code; cLbl.TextSize = 8; cLbl.TextXAlignment = Enum.TextXAlignment.Right
+                local checkBox = Instance.new("Frame", btn); checkBox.Name = "checkBox"; checkBox.Size = UDim2.new(0,14,0,14); checkBox.Position = UDim2.new(1,-18,0.5,-7)
+                checkBox.BackgroundColor3 = selected and C.green or C.border; checkBox.BorderSizePixel = 0
+                Instance.new("UICorner", checkBox).CornerRadius = UDim.new(0,3)
+                local tick = Instance.new("TextLabel", checkBox); tick.Name = "tick"; tick.Text = "✓"; tick.Size = UDim2.new(1,0,1,0); tick.BackgroundTransparency = 1; tick.TextColor3 = Color3.fromRGB(255,255,255)
+                tick.Font = Enum.Font.GothamBold; tick.TextSize = 9; tick.Visible = selected
+                btn.MouseButton1Click:Connect(function()
+                    if opts.onSelectItem then opts.onSelectItem(id, not selected) end
+                    buildList(searchBox.Text)
+                    if opts.getStatusText then statusText.Text = opts.getStatusText() end
+                    if opts.getChainText then chainLbl.Text = opts.getChainText() end
+                end)
+            end
+        end
+
+        searchBox:GetPropertyChangedSignal("Text"):Connect(function() buildList(searchBox.Text) end)
+        refreshBtn.MouseButton1Click:Connect(function() buildList(searchBox.Text) end)
+        task.defer(function() buildList("") end)
+
+        return T
+    end
+
+    -- ============================================================
+    --  BUILT-IN: Player Tab (optimized noclip + god mode throttle)
     -- ============================================================
     function Win:PlayerTab()
         local T = self:Tab("👤","Player")
@@ -714,7 +941,6 @@ function NexusLib:Window(cfg)
 
         T:Section("Movement")
 
-        -- Walk Speed
         local speedRef = { val = 16 }
         T:Slider("Walk Speed","Default 16 · Max 300",{min=0,max=300,default=16}, function(v)
             speedRef.val = v
@@ -722,7 +948,6 @@ function NexusLib:Window(cfg)
             if h then h.WalkSpeed = v end
         end)
 
-        -- Inf Jump
         T:Toggle("🚀 Infinite Jump","Jump again while airborne", false, function(on)
             local myGen = newGen(); runGen = myGen
             if on then
@@ -734,7 +959,6 @@ function NexusLib:Window(cfg)
             end
         end)
 
-        -- Walk speed reapply on respawn
         Players.LocalPlayer.CharacterAdded:Connect(function(char)
             local h = char:WaitForChild("Humanoid", 5)
             if h then h.WalkSpeed = speedRef.val end
@@ -742,7 +966,6 @@ function NexusLib:Window(cfg)
 
         T:Section("Utility")
 
-        -- Anti AFK
         T:Toggle("⏱️ Anti AFK","Prevents auto-kick every 55s", false, function(on)
             local myGen = newGen(); runGen = myGen
             if on then
@@ -760,31 +983,69 @@ function NexusLib:Window(cfg)
             end
         end)
 
-        -- Noclip
+        -- Noclip: cache BaseParts (no per-frame GetDescendants)
+        local noclipParts = {}
+        local noclipConns = {}
+        local function clearNoclipConns()
+            for i = 1, #noclipConns do pcall(function() noclipConns[i]:Disconnect() end) end
+            noclipConns = {}
+        end
+        local function rebuildNoclipParts(char)
+            table.clear(noclipParts)
+            clearNoclipConns()
+            if not char then return end
+            for _, d in ipairs(char:GetDescendants()) do
+                if d:IsA("BasePart") then noclipParts[#noclipParts+1] = d end
+            end
+            noclipConns[#noclipConns+1] = char.DescendantAdded:Connect(function(d)
+                if d:IsA("BasePart") then noclipParts[#noclipParts+1] = d end
+            end)
+            noclipConns[#noclipConns+1] = char.DescendantRemoving:Connect(function(d)
+                if not d:IsA("BasePart") then return end
+                for i = #noclipParts, 1, -1 do
+                    if noclipParts[i] == d then table.remove(noclipParts, i) end
+                end
+            end)
+        end
+        rebuildNoclipParts(getChar())
+        LP.CharacterAdded:Connect(function(c) rebuildNoclipParts(c) end)
+
         T:Toggle("👻 No Clip","Walk through walls", false, function(on)
             local myGen = newGen(); runGen = myGen
             if on then
+                local lastPrune = 0
                 local conn; conn = RunService.Stepped:Connect(function()
                     if runGen ~= myGen then conn:Disconnect(); return end
-                    local c = getChar()
-                    if c then
-                        for _, p in pairs(c:GetDescendants()) do
-                            if p:IsA("BasePart") then p.CanCollide = false end
+                    local now = os.clock()
+                    if now - lastPrune > 5 then
+                        lastPrune = now
+                        for i = #noclipParts, 1, -1 do
+                            local p = noclipParts[i]
+                            if not (p and p.Parent) then table.remove(noclipParts, i) end
                         end
+                    end
+                    for i = 1, #noclipParts do
+                        local p = noclipParts[i]
+                        if p and p.Parent then p.CanCollide = false end
                     end
                 end)
             end
         end)
 
-        -- God Mode
+        -- God mode: throttle to 0.5s
+        local lastGod = 0
         T:Toggle("🛡️ God Mode","Lock health to max", false, function(on)
             local myGen = newGen(); runGen = myGen
             if on then
                 task.spawn(function()
                     while true do
                         if runGen ~= myGen then break end
-                        local h = getHuman()
-                        if h then h.Health = h.MaxHealth end
+                        local now = os.clock()
+                        if now - lastGod >= 0.5 then
+                            lastGod = now
+                            local h = getHuman()
+                            if h then h.Health = h.MaxHealth end
+                        end
                         task.wait(0.1)
                     end
                 end)
@@ -809,7 +1070,6 @@ function NexusLib:Window(cfg)
         return T
     end
 
-    -- first tab auto-shown when Win:Tab is first called, so just return Win
     return Win
 end
 
