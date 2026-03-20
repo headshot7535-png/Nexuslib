@@ -275,21 +275,6 @@ function NexusLib:Window(cfg)
     NotifyPad.PaddingRight = UDim.new(0, 8)
     NotifyPad.PaddingBottom = UDim.new(0, 24)
 
-    -- Notify container (bottom-right)
-    local NotifyContainer = Instance.new("Frame", Screen)
-    NotifyContainer.Name = "NotifyContainer"
-    NotifyContainer.Size = UDim2.new(0, 280, 1, 0)
-    NotifyContainer.Position = UDim2.new(1, -288, 0, 0)
-    NotifyContainer.BackgroundTransparency = 1
-    local NotifyList = Instance.new("UIListLayout", NotifyContainer)
-    NotifyList.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    NotifyList.VerticalAlignment = Enum.VerticalAlignment.Bottom
-    NotifyList.Padding = UDim.new(0, 8)
-    NotifyList.SortOrder = Enum.SortOrder.LayoutOrder
-    local NotifyPad = Instance.new("UIPadding", NotifyContainer)
-    NotifyPad.PaddingRight = UDim.new(0, 8)
-    NotifyPad.PaddingBottom = UDim.new(0, 24)
-
     local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab }
 
     function Win:Status(msg) SLbl.Text = msg end
@@ -694,7 +679,7 @@ function NexusLib:Window(cfg)
             Instance.new("UICorner", listFrame).CornerRadius = UDim.new(0,8)
             Instance.new("UIStroke", listFrame).Color = C.border
             local listScroll = Instance.new("ScrollingFrame", listFrame)
-            listScroll.Size = UDim2.new(1,-4,0,0); listScroll.Position = UDim2.new(0,2,0,2)
+            listScroll.Size = UDim2.new(1,-4,1,-4); listScroll.Position = UDim2.new(0,2,0,2)
             listScroll.BackgroundTransparency = 1; listScroll.BorderSizePixel = 0; listScroll.ScrollBarThickness = 3; listScroll.ScrollBarImageColor3 = C.accent
             listScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
             local listLayout = Instance.new("UIListLayout", listScroll); listLayout.Padding = UDim.new(0,2); listLayout.SortOrder = Enum.SortOrder.LayoutOrder
