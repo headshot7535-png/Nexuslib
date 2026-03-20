@@ -683,10 +683,15 @@ function NexusLib:Window(cfg)
             listScroll.BackgroundTransparency = 1; listScroll.BorderSizePixel = 0; listScroll.ScrollBarThickness = 3; listScroll.ScrollBarImageColor3 = C.accent
             listScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
             local listLayout = Instance.new("UIListLayout", listScroll); listLayout.Padding = UDim.new(0,2); listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            local function refreshDropdownCanvas()
+                local contentY = listLayout.AbsoluteContentSize.Y
+                listScroll.CanvasSize = UDim2.new(0,0,0,math.max(contentY + 2, 0))
+            end
+            listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshDropdownCanvas)
 
             local function openList()
                 local h = math.min(#list * 26 + 4, 150)
-                listFrame.Size = UDim2.new(1,-10,0,h); listScroll.CanvasSize = UDim2.new(0,0,0,0)
+                listFrame.Size = UDim2.new(1,-10,0,h)
                 for _, c in ipairs(listScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
                 for i, item in ipairs(list) do
                     local btn = Instance.new("TextButton", listScroll)
@@ -701,6 +706,7 @@ function NexusLib:Window(cfg)
                         if cb then cb(cur.text, cur.value, i) end
                     end)
                 end
+                refreshDropdownCanvas()
                 listFrame.Visible = true
             end
             dropBtn.MouseButton1Click:Connect(function() listFrame.Visible = not listFrame.Visible; if listFrame.Visible then openList() end end)
