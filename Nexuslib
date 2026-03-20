@@ -643,6 +643,7 @@ function NexusLib:Window(cfg)
         -- Dropdown (Select): options = { "A", "B" } or { {text="A", value=1}, ... }, default = 1-based index
         function T:Dropdown(label, desc, options, defaultIndex, cb)
             order = order + 1
+            local cardOrder = order
             local opts = options or {}
             local list = {}
             for i, v in ipairs(opts) do
@@ -652,7 +653,7 @@ function NexusLib:Window(cfg)
             local cur = list[curIdx]
 
             local Card = Instance.new("Frame", page)
-            Card.Size = UDim2.new(1,-10,0,52); Card.BackgroundColor3 = C.card; Card.BorderSizePixel = 0; Card.LayoutOrder = order
+            Card.Size = UDim2.new(1,-10,0,52); Card.BackgroundColor3 = C.card; Card.BorderSizePixel = 0; Card.LayoutOrder = cardOrder
             Instance.new("UICorner", Card).CornerRadius = UDim.new(0,10)
             Instance.new("UIStroke", Card).Color = C.border
 
@@ -675,7 +676,8 @@ function NexusLib:Window(cfg)
 
             local listFrame = Instance.new("Frame", page)
             listFrame.Size = UDim2.new(1,-10,0,0); listFrame.BackgroundColor3 = C.card; listFrame.BorderSizePixel = 0; listFrame.Visible = false; listFrame.ClipsDescendants = true
-            listFrame.LayoutOrder = order + 1000
+            listFrame.LayoutOrder = cardOrder + 1
+            order = cardOrder + 1
             Instance.new("UICorner", listFrame).CornerRadius = UDim.new(0,8)
             Instance.new("UIStroke", listFrame).Color = C.border
             local listScroll = Instance.new("ScrollingFrame", listFrame)
