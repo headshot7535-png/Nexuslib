@@ -640,8 +640,10 @@ function NexusLib:Window(cfg)
             return { Set = function(s) l.Text = s end }
         end
 
-        -- Dropdown (Select): options = { "A", "B" } or { {text="A", value=1}, ... }, default = 1-based index
-        function T:Dropdown(label, desc, options, defaultIndex, cb)
+        -- Dropdown: single-select by default, set multi=true for multi-select
+        -- Single: Dropdown(label, desc, options, defaultIndex, cb)
+        -- Multi : Dropdown(label, desc, options, defaultIndicesTable, cb, true)
+        function T:Dropdown(label, desc, options, defaultIndex, cb, multi)
             order = order + 1
             local cardOrder = order
             local opts = options or {}
@@ -649,8 +651,15 @@ function NexusLib:Window(cfg)
             for i, v in ipairs(opts) do
                 if type(v) == "table" then list[i] = { text = v.text or v[1], value = v.value ~= nil and v.value or v[2] or v } else list[i] = { text = tostring(v), value = v } end
             end
-            local curIdx = math.clamp(defaultIndex or 1, 1, math.max(1, #list))
+            local isMulti = (multi == true) or (type(defaultIndex) == "table")
+            local curIdx = math.clamp((type(defaultIndex) == "number" and defaultIndex or 1), 1, math.max(1, #list))
             local cur = list[curIdx]
+            local selected = {}
+            if isMulti then
+                for _, idx in ipairs(type(defaultIndex) == "table" and defaultIndex or {}) do
+                    if idx >= 1 and idx <= #list then selected[idx] = true end
+                end
+            end
 
             local Card = Instance.new("Frame", page)
             Card.Size = UDim2.new(1,-10,0,52); Card.BackgroundColor3 = C.card; Card.BorderSizePixel = 0; Card.LayoutOrder = cardOrder
@@ -691,30 +700,100 @@ function NexusLib:Window(cfg)
             end
             listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshDropdownCanvas)
 
+            local function getSelectedIndices()
+                local t = {}
+                for i = 1, #list do if selected[i] then t[#t+1] = i end end
+                return t
+            end
+            local function getSelectedValues()
+                local t = {}
+                for i = 1, #list do if selected[i] then t[#t+1] = list[i].value end end
+                return t
+            end
+            local function getSelectedTexts()
+                local t = {}
+                for i = 1, #list do if selected[i] then t[#t+1] = list[i].text end end
+                return t
+            end
+            local function updateDropLabel()
+                if not isMulti then
+                    dropLbl.Text = cur and cur.text or "..."
+                    return
+                end
+                local labels = getSelectedTexts()
+                if #labels == 0 then
+                    dropLbl.Text = "None"
+                elseif #labels == 1 then
+                    dropLbl.Text = labels[1]
+                else
+                    dropLbl.Text = tostring(#labels) .. " selected"
+                end
+            end
+            local function fireDropdownCb()
+                if not cb then return end
+                if isMulti then
+                    cb(getSelectedIndices(), getSelectedValues(), getSelectedTexts())
+                else
+                    cb(cur and cur.text, cur and cur.value, curIdx)
+                end
+            end
+
             local function openList()
                 local h = math.min(#list * 26 + 4, 150)
                 listFrame.Size = UDim2.new(1,-10,0,h)
                 for _, c in ipairs(listScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
                 for i, item in ipairs(list) do
                     local btn = Instance.new("TextButton", listScroll)
-                    btn.Size = UDim2.new(1,-4,0,24); btn.LayoutOrder = i; btn.BackgroundColor3 = (i == curIdx) and Color3.fromRGB(0,40,80) or C.panel
+                    local isActive = isMulti and selected[i] or (i == curIdx)
+                    btn.Size = UDim2.new(1,-4,0,24); btn.LayoutOrder = i; btn.BackgroundColor3 = isActive and Color3.fromRGB(0,40,80) or C.panel
                     btn.BorderSizePixel = 0; btn.Text = ""; btn.Font = Enum.Font.GothamBold; btn.TextSize = 10
                     Instance.new("UICorner", btn).CornerRadius = UDim.new(0,4)
                     local lbl = Instance.new("TextLabel", btn)
-                    lbl.Size = UDim2.new(1,-8,1,0); lbl.Position = UDim2.new(0,6,0,0); lbl.BackgroundTransparency = 1; lbl.TextColor3 = C.text
+                    lbl.Size = UDim2.new(1, isMulti and -28 or -8, 1,0); lbl.Position = UDim2.new(0,6,0,0); lbl.BackgroundTransparency = 1; lbl.TextColor3 = C.text
                     lbl.Text = item.text; lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.TextTruncate = Enum.TextTruncate.AtEnd
+                    if isMulti then
+                        local chk = Instance.new("Frame", btn)
+                        chk.Size = UDim2.new(0,14,0,14); chk.Position = UDim2.new(1,-18,0.5,-7)
+                        chk.BackgroundColor3 = selected[i] and C.accent or C.border; chk.BorderSizePixel = 0
+                        Instance.new("UICorner", chk).CornerRadius = UDim.new(0,3)
+                        local tick = Instance.new("TextLabel", chk)
+                        tick.Size = UDim2.new(1,0,1,0); tick.BackgroundTransparency = 1
+                        tick.Text = "✓"; tick.TextColor3 = Color3.fromRGB(255,255,255)
+                        tick.Font = Enum.Font.GothamBold; tick.TextSize = 9; tick.Visible = selected[i]
+                    end
                     btn.MouseButton1Click:Connect(function()
-                        curIdx = i; cur = list[i]; dropLbl.Text = cur.text; listFrame.Visible = false
-                        if cb then cb(cur.text, cur.value, i) end
+                        if isMulti then
+                            selected[i] = not selected[i]
+                            updateDropLabel()
+                            fireDropdownCb()
+                            openList()
+                        else
+                            curIdx = i; cur = list[i]; updateDropLabel(); listFrame.Visible = false
+                            fireDropdownCb()
+                        end
                     end)
                 end
                 refreshDropdownCanvas()
                 listFrame.Visible = true
             end
             dropBtn.MouseButton1Click:Connect(function() listFrame.Visible = not listFrame.Visible; if listFrame.Visible then openList() end end)
-            if cur then dropLbl.Text = cur.text end
+            updateDropLabel()
 
-            return { Set = function(idx) curIdx = math.clamp(idx,1,#list); cur = list[curIdx]; dropLbl.Text = cur and cur.text or "..." end, Get = function() return curIdx, cur and cur.value end }
+            return {
+                Set = function(v)
+                    if isMulti then
+                        for i = 1, #list do selected[i] = false end
+                        for _, idx in ipairs(type(v) == "table" and v or {}) do if idx >= 1 and idx <= #list then selected[idx] = true end end
+                    else
+                        curIdx = math.clamp(tonumber(v) or 1, 1, math.max(1, #list)); cur = list[curIdx]
+                    end
+                    updateDropLabel()
+                end,
+                Get = function()
+                    if isMulti then return getSelectedIndices(), getSelectedValues(), getSelectedTexts() end
+                    return curIdx, cur and cur.value, cur and cur.text
+                end
+            }
         end
 
         -- Keybind: defaultKey = Enum.KeyCode.E or "E", cb(keyCode) when key is pressed
