@@ -1,12 +1,13 @@
 -- ============================================================
---  NexusLib v1.2  |  GUI Library (Rayfield-style + ListTab + Notify)
+--  NexusLib v1.3  |  GUI Library (Rayfield-style + ListTab + Notify)
 --  Usage:
 --    local Lib = loadstring(game:HttpGet("URL"))()
 --    local Win  = Lib:Window({ title="My GUI" })
 --    local Tab  = Win:Tab("⚙️","Settings")
 --    Tab:Section("Movement")
 --    Tab:Toggle("Infinite Jump", false, function(on) end)
---    Tab:Slider("Walk Speed",{min=0,max=300,default=16}, function(v) end)
+--    local spd = Tab:Slider("Walk Speed","0–300",{min=0,max=300,default=16}, function(v) end)
+--    spd:Set(120)  -- v1.3: set value from code (UI + callback)
 --    Tab:Dropdown("Quality", "Graphics", {"Low","Medium","High"}, 1, function(opt, idx) end)
 --    Tab:Keybind("Toggle GUI", "Press to show/hide", Enum.KeyCode.RightShift, function(key) end)
 --    Tab:Input("Name", "Your display name", "Enter name...", "", function(txt) end)
@@ -524,7 +525,14 @@ function NexusLib:Window(cfg)
         end
 
         function T:Slider(label, desc, opts, cb)
+            -- Slider(label, opts, cb)  — 3-arg form
+            if type(desc) == "table" and type(opts) == "function" and cb == nil then
+                cb = opts
+                opts = desc
+                desc = ""
+            end
             order = order + 1
+            opts = opts or {}
             local minV    = opts.min     or 0
             local maxV    = opts.max     or 100
             local initV   = opts.default or minV
@@ -556,7 +564,8 @@ function NexusLib:Window(cfg)
             Track.BackgroundColor3 = C.panel; Track.BorderSizePixel = 0
             Instance.new("UICorner",Track).CornerRadius = UDim.new(1,0)
 
-            local pct0 = (initV-minV)/(maxV-minV)
+            local span = maxV - minV
+            local pct0 = span > 0 and (initV - minV) / span or 0
             local Fill = Instance.new("Frame",Track)
             Fill.Size = UDim2.new(pct0,0,1,0); Fill.BackgroundColor3 = C.accent; Fill.BorderSizePixel = 0
             Instance.new("UICorner",Fill).CornerRadius = UDim.new(1,0)
@@ -569,29 +578,53 @@ function NexusLib:Window(cfg)
 
             local curVal = initV
             local dragging = false
+            local function isPressStart(i)
+                return i.UserInputType == Enum.UserInputType.MouseButton1
+                    or i.UserInputType == Enum.UserInputType.Touch
+            end
+            local function isPressEnd(i)
+                return i.UserInputType == Enum.UserInputType.MouseButton1
+                    or i.UserInputType == Enum.UserInputType.Touch
+            end
             local function apply(ix)
+                if Track.AbsoluteSize.X <= 0 then return end
                 local rel = math.clamp(ix - Track.AbsolutePosition.X, 0, Track.AbsoluteSize.X)
                 local p   = rel / Track.AbsoluteSize.X
-                local v   = minV + math.round((maxV-minV)*p)
+                local v   = minV + math.round((maxV - minV) * p)
                 curVal = v
                 Fill.Size = UDim2.new(p,0,1,0); Knob.Position = UDim2.new(p,0,0.5,0)
                 vL.Text = fmt(v)
                 if cb then cb(v) end
             end
             Knob.InputBegan:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
+                if isPressStart(i) then dragging = true end
             end)
             UserInputService.InputChanged:Connect(function(i)
-                if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then apply(i.Position.X) end
+                if not dragging then return end
+                if i.UserInputType == Enum.UserInputType.MouseMovement
+                    or i.UserInputType == Enum.UserInputType.Touch then
+                    apply(i.Position.X)
+                end
             end)
             UserInputService.InputEnded:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+                if isPressEnd(i) then dragging = false end
             end)
             Track.InputBegan:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 then apply(i.Position.X) end
+                if isPressStart(i) then apply(i.Position.X) end
             end)
 
-            return { Get = function() return curVal end }
+            local function setFromValue(rawV, silent)
+                local v = math.round(math.clamp(rawV, minV, maxV))
+                curVal = v
+                local s = maxV - minV
+                local p = s > 0 and (v - minV) / s or 0
+                Fill.Size = UDim2.new(p, 0, 1, 0)
+                Knob.Position = UDim2.new(p, 0, 0.5, 0)
+                vL.Text = fmt(v)
+                if not silent and cb then cb(v) end
+            end
+
+            return { Get = function() return curVal end, Set = setFromValue }
         end
 
         function T:Button(icon, label, desc, accentCol, cb)
