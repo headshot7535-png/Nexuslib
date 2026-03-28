@@ -1153,10 +1153,19 @@ function NexusLib:Window(cfg)
         local FeedPad = Instance.new("UIPadding",FeedScroll)
         FeedPad.PaddingLeft = UDim.new(0,6); FeedPad.PaddingRight = UDim.new(0,6)
 
+        local feedLineOrder = 0
+        local function scrollFeedToBottom()
+            local maxY = FeedScroll.AbsoluteCanvasSize.Y - FeedScroll.AbsoluteSize.Y
+            if maxY > 0 then
+                FeedScroll.CanvasPosition = Vector2.new(0, maxY)
+            end
+        end
+
         local function addLine(user, text, server, isSystem)
+            feedLineOrder = feedLineOrder + 1
             local row = Instance.new("Frame",FeedScroll)
             row.Size = UDim2.new(1,0,0,0); row.AutomaticSize = Enum.AutomaticSize.Y
-            row.BackgroundTransparency = 1; row.LayoutOrder = #FeedScroll:GetChildren()
+            row.BackgroundTransparency = 1; row.LayoutOrder = feedLineOrder
             local lbl = Instance.new("TextLabel",row)
             lbl.Size = UDim2.new(1,0,0,0); lbl.AutomaticSize = Enum.AutomaticSize.Y
             lbl.BackgroundTransparency = 1; lbl.TextWrapped = true
@@ -1168,9 +1177,7 @@ function NexusLib:Window(cfg)
                 lbl.TextColor3 = C.text
                 lbl.Text = "["..tostring(server or "?").."] "..tostring(user or "Anon")..": "..tostring(text)
             end
-            task.defer(function()
-                FeedScroll.CanvasPosition = Vector2.new(0, FeedLayout.AbsoluteContentSize.Y)
-            end)
+            task.defer(scrollFeedToBottom)
         end
 
         local InputCard = Instance.new("Frame",T._page)
@@ -1254,17 +1261,10 @@ function NexusLib:Window(cfg)
             end
         end)
 
-        -- poll (cap seen to 500 keys to avoid unbounded growth)
-        local SEEN_CAP = 500
-        local seenKeys = {}
-        local seenOrder = {}
+        -- poll: never drop keys from seenKeys — Firebase GET returns full history; evicting keys
+        -- made pruned messages look "new" every poll and re-append duplicates (scroll spam).
 
-        local function pruneSeen()
-            while #seenOrder > SEEN_CAP do
-                local k = table.remove(seenOrder, 1)
-                seenKeys[k] = nil
-            end
-        end
+        local seenKeys = {}
 
         task.spawn(function()
             _G.NexusLib_ChatGen = (_G.NexusLib_ChatGen or 0) + 1
@@ -1294,9 +1294,7 @@ function NexusLib:Window(cfg)
                 end
                 table.sort(msgs, function(a, b) return a.time < b.time end)
                 for i = 1, #msgs do
-                    local m = msgs[i]
-                    seenKeys[m.key] = true
-                    table.insert(seenOrder, m.key)
+                    seenKeys[msgs[i].key] = true
                 end
                 if #msgs > 0 then
                     task.spawn(function()
@@ -1312,10 +1310,7 @@ function NexusLib:Window(cfg)
                             end
                             addLine(m.user, display, m.server, false)
                         end
-                        pruneSeen()
                     end)
-                else
-                    pruneSeen()
                 end
                 return #msgs > 0
             end
