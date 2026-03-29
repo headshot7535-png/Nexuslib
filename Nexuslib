@@ -456,10 +456,15 @@ function NexusLib:Window(cfg)
 
     function Win:Tab(icon, name)
         local btn = Instance.new("TextButton", TabBar)
-        btn.Text = icon.." "..name; btn.Size = UDim2.new(0,70,0,26)
+        btn.Text = icon.." "..name
+        btn.AutomaticSize = Enum.AutomaticSize.X
+        btn.Size = UDim2.new(0, 0, 0, 26)
         btn.BackgroundTransparency = 1; btn.TextColor3 = C.sub
         btn.Font = Enum.Font.GothamBold; btn.TextSize = 10; btn.BorderSizePixel = 0
         Instance.new("UICorner",btn).CornerRadius = UDim.new(0,7)
+        local btnPad = Instance.new("UIPadding", btn)
+        btnPad.PaddingLeft = UDim.new(0, 8)
+        btnPad.PaddingRight = UDim.new(0, 8)
 
         local page = Instance.new("ScrollingFrame", Content)
         page.Size = UDim2.new(1,0,1,0); page.BackgroundTransparency = 1
