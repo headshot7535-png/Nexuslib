@@ -33,10 +33,15 @@ local HS               = game:GetService("HttpService")
 
 -- ── Player ───────────────────────────────────────────────────
 local LP
-for _ = 1, 60 do
-    LP = Players.LocalPlayer
-    if LP and LP:FindFirstChildOfClass("PlayerGui") then break end
-    task.wait(0.2)
+-- In executor context task.wait() may not yield during startup, so try direct
+-- assignment first, then fall back to the loop if needed.
+LP = Players.LocalPlayer
+if not LP then
+    for _ = 1, 60 do
+        LP = Players.LocalPlayer
+        if LP and LP:FindFirstChildOfClass("PlayerGui") then break end
+        task.wait(0.2)
+    end
 end
 if not LP then return {} end
 
