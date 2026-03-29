@@ -1346,7 +1346,7 @@ function NexusLib:Window(cfg)
         local TypingBar = Instance.new("TextLabel",page)
         TypingBar.Size = UDim2.new(1,-10,0,14); TypingBar.BackgroundTransparency = 1
         TypingBar.LayoutOrder = 5; TypingBar.TextColor3 = C.sub
-        TypingBar.Font = Enum.Font.GothamItalic; TypingBar.TextSize = 9
+        TypingBar.Font = Enum.Font.SourceSansItalic; TypingBar.TextSize = 9
         TypingBar.TextXAlignment = Enum.TextXAlignment.Left; TypingBar.Text = ""
 
         -- Reply preview bar
@@ -1435,7 +1435,7 @@ function NexusLib:Window(cfg)
             row.Size = UDim2.new(1,0,0,16); row.BackgroundTransparency = 1; row.LayoutOrder = feedLineOrder
             local lbl = Instance.new("TextLabel",row)
             lbl.Size = UDim2.new(1,0,1,0); lbl.BackgroundTransparency = 1
-            lbl.TextColor3 = C.sub; lbl.Font = Enum.Font.GothamItalic; lbl.TextSize = 9
+            lbl.TextColor3 = C.sub; lbl.Font = Enum.Font.SourceSansItalic; lbl.TextSize = 9
             lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Text = "  — "..txt
             task.defer(scrollToBottom)
         end
@@ -1472,7 +1472,7 @@ function NexusLib:Window(cfg)
                 local qLbl = Instance.new("TextLabel",qStrip)
                 qLbl.Size = UDim2.new(1,-10,1,0); qLbl.Position = UDim2.new(0,8,0,0)
                 qLbl.BackgroundTransparency = 1; qLbl.TextColor3 = C.sub
-                qLbl.Font = Enum.Font.GothamItalic; qLbl.TextSize = 8
+                qLbl.Font = Enum.Font.SourceSansItalic; qLbl.TextSize = 8
                 qLbl.TextXAlignment = Enum.TextXAlignment.Left
                 qLbl.Text = "↩ "..tostring(replyTo.user)..": "..tostring(replyTo.text):sub(1,40)
             end
