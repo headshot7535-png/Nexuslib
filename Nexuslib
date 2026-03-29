@@ -1786,7 +1786,7 @@ function NexusLib:Window(cfg)
                 myNickname = newName
                 ChatInput.Text = ""
                 addSystemLine("Nickname set to: "..myNickname)
-                HeaderTitle.Text = "# global  (you: "..myNickname..")")
+                HeaderTitle.Text = "# global  (you: "..myNickname..")"
             else
                 addSystemLine("Type a nickname in the box (max 24 chars) then click ✏")
             end
