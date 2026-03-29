@@ -31,41 +31,14 @@ local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
 local HS               = game:GetService("HttpService")
 
--- ── Player (client only) ───────────────────────────────────
--- Bounded wait only (no infinite :Wait() — server has no LocalPlayer).
-local LP = Players.LocalPlayer
-local _lpDeadline = os.clock() + 120
-while not LP and os.clock() < _lpDeadline do
-    task.wait(0.1)
+-- ── Player ───────────────────────────────────────────────────
+local LP
+for _ = 1, 60 do
     LP = Players.LocalPlayer
+    if LP and LP:FindFirstChildOfClass("PlayerGui") then break end
+    task.wait(0.2)
 end
-if not LP then
-    warn("[NexusLib] LocalPlayer not found after 120s — run as a LocalScript / client executor.")
-    return {}
-end
-local PlayerGui = LP:FindFirstChildOfClass("PlayerGui")
-if not PlayerGui then
-    local _pgConn
-    _pgConn = LP.ChildAdded:Connect(function(ch)
-        if ch:IsA("PlayerGui") then
-            PlayerGui = ch
-        end
-    end)
-    for _ = 1, 1200 do
-        PlayerGui = PlayerGui or LP:FindFirstChildOfClass("PlayerGui")
-        if PlayerGui then
-            break
-        end
-        task.wait(0.1)
-    end
-    if _pgConn then
-        _pgConn:Disconnect()
-    end
-end
-if not PlayerGui then
-    warn("[NexusLib] PlayerGui not ready after 120s.")
-    return {}
-end
+if not LP then return {} end
 
 -- Simple client-side chat filter (no TextService — avoids executor / enum issues). Edit CHAT_BLOCKLIST.
 -- Longer phrases first so e.g. "bullshit" is censored before "shit". Substring match, case-insensitive.
@@ -2409,14 +2382,16 @@ function NexusLib:Window(cfg)
             }
     end
 
-    -- ============================================================
-    --  BUILT-IN: Exploit Tab
-    --  Win:ExploitTab()
-    --  All features are self-contained, generation-safe, and
-    --  automatically re-arm on CharacterAdded.
-    -- ============================================================
-    function Win:ExploitTab()
-        local T = self:Tab("⚡","Exploit")
+    return Win
+end
+
+-- ============================================================
+--  BUILT-IN: Exploit Tab — defined outside NexusLib:Window to
+--  avoid hitting Luau's 200-local register limit inside Window.
+-- ============================================================
+;(function()
+local _exploitImpl = function(self)
+    local T = self:Tab("⚡","Exploit")
         local function gen() _featureRunGen = _featureRunGen + 1; return _featureRunGen end
 
         -- ── Movement ─────────────────────────────────────────────
@@ -2828,13 +2803,12 @@ function NexusLib:Window(cfg)
         local spyLog = {}
         local spyLblRef = T:Label("Remote spy: OFF")
 
-        T:Toggle("📡 Remote Spy","Log RemoteEvent :FireClient (server → you)",false,function(on)
+        T:Toggle("📡 Remote Spy","Log all RemoteEvent/Function fires",false,function(on)
             spyEnabled = on
             spyLblRef.Set(on and "Remote spy: ON — check output" or "Remote spy: OFF")
             if on then
                 for _, d in ipairs(game:GetDescendants()) do
-                    -- RemoteFunction has no OnClientEvent (use OnClientInvoke for server→client RF)
-                    if d:IsA("RemoteEvent") then
+                    if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") then
                         pcall(function()
                             d.OnClientEvent:Connect(function(...)
                                 if not spyEnabled then return end
@@ -2933,9 +2907,13 @@ function NexusLib:Window(cfg)
         end)
 
         return T
-    end
-
-    return Win
 end
-
+-- Attach ExploitTab to every Win object created by NexusLib:Window
+local _origWindow = NexusLib.Window
+NexusLib.Window = function(self, cfg)
+    local win = _origWindow(self, cfg)
+    win.ExploitTab = function(winSelf) return _exploitImpl(winSelf) end
+    return win
+end
+end)()
 return NexusLib
