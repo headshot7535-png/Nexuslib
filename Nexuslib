@@ -31,14 +31,37 @@ local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
 local HS               = game:GetService("HttpService")
 
--- ── Player ───────────────────────────────────────────────────
-local LP
-for _ = 1, 60 do
-    LP = Players.LocalPlayer
-    if LP and LP:FindFirstChildOfClass("PlayerGui") then break end
-    task.wait(0.2)
+-- ── Player (client only) ───────────────────────────────────
+-- LocalPlayer and PlayerGui can appear at different times on join; waiting for both
+-- in one short loop caused return {} (no Window) and "NexusLib failed to load" in hosts.
+local LP = Players.LocalPlayer
+if not LP then
+    for _ = 1, 200 do
+        LP = Players.LocalPlayer
+        if LP then
+            break
+        end
+        task.wait(0.1)
+    end
 end
-if not LP then return {} end
+if not LP then
+    warn("[NexusLib] LocalPlayer not found — run on the client, not the server.")
+    return {}
+end
+local PlayerGui = LP:FindFirstChildOfClass("PlayerGui")
+if not PlayerGui then
+    for _ = 1, 300 do
+        PlayerGui = LP:FindFirstChildOfClass("PlayerGui")
+        if PlayerGui then
+            break
+        end
+        task.wait(0.1)
+    end
+end
+if not PlayerGui then
+    warn("[NexusLib] PlayerGui not ready after 30s — cannot attach UI.")
+    return {}
+end
 
 -- Simple client-side chat filter (no TextService — avoids executor / enum issues). Edit CHAT_BLOCKLIST.
 -- Longer phrases first so e.g. "bullshit" is censored before "shit". Substring match, case-insensitive.
@@ -2801,12 +2824,13 @@ function NexusLib:Window(cfg)
         local spyLog = {}
         local spyLblRef = T:Label("Remote spy: OFF")
 
-        T:Toggle("📡 Remote Spy","Log all RemoteEvent/Function fires",false,function(on)
+        T:Toggle("📡 Remote Spy","Log RemoteEvent :FireClient (server → you)",false,function(on)
             spyEnabled = on
             spyLblRef.Set(on and "Remote spy: ON — check output" or "Remote spy: OFF")
             if on then
                 for _, d in ipairs(game:GetDescendants()) do
-                    if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") then
+                    -- RemoteFunction has no OnClientEvent (use OnClientInvoke for server→client RF)
+                    if d:IsA("RemoteEvent") then
                         pcall(function()
                             d.OnClientEvent:Connect(function(...)
                                 if not spyEnabled then return end
