@@ -1634,21 +1634,43 @@ function NexusLib:Window(cfg)
 
         local defIj = saved.playerInfiniteJump == true
         local ijGen = 0
+        local ijJumpConn
         local infiniteJumpRef = T:Toggle("🚀 Infinite Jump","Jump again while airborne", defIj, function(on)
             local myGen = newGen(); ijGen = myGen
+            if ijJumpConn then
+                pcall(function()
+                    ijJumpConn:Disconnect()
+                end)
+                ijJumpConn = nil
+            end
             if on then
-                local conn; conn = UserInputService.JumpRequest:Connect(function()
-                    if ijGen ~= myGen then conn:Disconnect(); return end
+                ijJumpConn = UserInputService.JumpRequest:Connect(function()
+                    if ijGen ~= myGen then
+                        return
+                    end
                     local h = getHuman()
-                    if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+                    if h then
+                        h:ChangeState(Enum.HumanoidStateType.Jumping)
+                    end
                 end)
             end
             firePersist()
         end)
 
-        Players.LocalPlayer.CharacterAdded:Connect(function(char)
+        local function refreshInfiniteJumpIfEnabled()
+            task.defer(function()
+                if infiniteJumpRef.Get() == true then
+                    infiniteJumpRef.Set(true)
+                end
+            end)
+        end
+        LP.CharacterAdded:Connect(function(char)
             local h = char:WaitForChild("Humanoid", 5)
-            if h then h.WalkSpeed = speedRef.val end
+            if h then
+                h.WalkSpeed = speedRef.val
+            end
+            -- Re-arm IJ after spawn: Humanoid just appeared; JumpRequest re-hook matches manual re-toggle.
+            refreshInfiniteJumpIfEnabled()
         end)
 
         T:Section("Utility")
@@ -1764,9 +1786,7 @@ function NexusLib:Window(cfg)
         end)
 
         -- Toggles with default true only paint UI; re-Set to run callbacks (loops / connections).
-        if defIj then
-            infiniteJumpRef.Set(true)
-        end
+        -- Apply Infinite Jump last so nothing else overwrites shared state / duplicate Set order; IJ must win.
         if defAfk then
             antiAfkRef.Set(true)
         end
@@ -1775,6 +1795,13 @@ function NexusLib:Window(cfg)
         end
         if defGod then
             godModeRef.Set(true)
+        end
+        if defIj then
+            infiniteJumpRef.Set(true)
+        end
+        -- Character already loaded: same as CharacterAdded (library built after spawn — first Set can be too early).
+        if LP.Character then
+            refreshInfiniteJumpIfEnabled()
         end
 
         local h0 = getHuman()
