@@ -863,6 +863,18 @@ function NexusLib:Window(cfg)
             dropBtn.MouseButton1Click:Connect(function() listFrame.Visible = not listFrame.Visible; if listFrame.Visible then openList() end end)
             updateDropLabel()
 
+            local function rebuildOptionList(newOptions)
+                opts = newOptions or {}
+                list = {}
+                for i, v in ipairs(opts) do
+                    if type(v) == "table" then
+                        list[i] = { text = v.text or v[1], value = v.value ~= nil and v.value or v[2] or v }
+                    else
+                        list[i] = { text = tostring(v), value = v }
+                    end
+                end
+            end
+
             return {
                 Set = function(v)
                     if isMulti then
@@ -876,7 +888,32 @@ function NexusLib:Window(cfg)
                 Get = function()
                     if isMulti then return getSelectedIndices(), getSelectedValues(), getSelectedTexts() end
                     return curIdx, cur and cur.value, cur and cur.text
-                end
+                end,
+                --- Replace options (e.g. Profile units). selectValue = optional value to keep selected.
+                Refresh = function(newOptions, selectValue)
+                    rebuildOptionList(newOptions)
+                    listFrame.Visible = false
+                    if isMulti then
+                        for i = 1, #list do selected[i] = false end
+                        curIdx = math.clamp(1, 1, math.max(1, #list))
+                        cur = list[curIdx]
+                    else
+                        local want = selectValue
+                        curIdx = 1
+                        if want ~= nil and want ~= "" then
+                            for i, it in ipairs(list) do
+                                if it.value == want then
+                                    curIdx = i
+                                    break
+                                end
+                            end
+                        else
+                            curIdx = math.clamp(curIdx, 1, math.max(1, #list))
+                        end
+                        cur = list[curIdx]
+                    end
+                    updateDropLabel()
+                end,
             }
         end
 
