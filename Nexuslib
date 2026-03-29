@@ -1613,7 +1613,7 @@ function NexusLib:Window(cfg)
         end
 
         local T = self:Tab("👤","Player")
-        local runGen = newGen()
+        -- Separate gens per toggle: a shared runGen broke Infinite Jump when Anti-AFK / Noclip / God also default ON (last Set overwrote runGen).
 
         T:Section("Movement")
 
@@ -1633,11 +1633,12 @@ function NexusLib:Window(cfg)
         end)
 
         local defIj = saved.playerInfiniteJump == true
+        local ijGen = 0
         local infiniteJumpRef = T:Toggle("🚀 Infinite Jump","Jump again while airborne", defIj, function(on)
-            local myGen = newGen(); runGen = myGen
+            local myGen = newGen(); ijGen = myGen
             if on then
                 local conn; conn = UserInputService.JumpRequest:Connect(function()
-                    if runGen ~= myGen then conn:Disconnect(); return end
+                    if ijGen ~= myGen then conn:Disconnect(); return end
                     local h = getHuman()
                     if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
                 end)
@@ -1653,15 +1654,16 @@ function NexusLib:Window(cfg)
         T:Section("Utility")
 
         local defAfk = saved.playerAntiAfk == true
+        local afkGen = 0
         local antiAfkRef = T:Toggle("⏱️ Anti AFK","Prevents auto-kick every 55s", defAfk, function(on)
-            local myGen = newGen(); runGen = myGen
+            local myGen = newGen(); afkGen = myGen
             if on then
                 task.spawn(function()
                     local VU = game:GetService("VirtualUser")
                     while true do
-                        if runGen ~= myGen then break end
+                        if afkGen ~= myGen then break end
                         task.wait(55)
-                        if runGen ~= myGen then break end
+                        if afkGen ~= myGen then break end
                         VU:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
                         task.wait(0.1)
                         VU:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
@@ -1699,12 +1701,13 @@ function NexusLib:Window(cfg)
         LP.CharacterAdded:Connect(function(c) rebuildNoclipParts(c) end)
 
         local defNc = saved.playerNoclip == true
+        local ncGen = 0
         local noclipRef = T:Toggle("👻 No Clip","Walk through walls", defNc, function(on)
-            local myGen = newGen(); runGen = myGen
+            local myGen = newGen(); ncGen = myGen
             if on then
                 local lastPrune = 0
                 local conn; conn = RunService.Stepped:Connect(function()
-                    if runGen ~= myGen then conn:Disconnect(); return end
+                    if ncGen ~= myGen then conn:Disconnect(); return end
                     local now = os.clock()
                     if now - lastPrune > 5 then
                         lastPrune = now
@@ -1725,12 +1728,13 @@ function NexusLib:Window(cfg)
         -- God mode: throttle to 0.5s
         local lastGod = 0
         local defGod = saved.playerGodMode == true
+        local godGen = 0
         local godModeRef = T:Toggle("🛡️ God Mode","Lock health to max", defGod, function(on)
-            local myGen = newGen(); runGen = myGen
+            local myGen = newGen(); godGen = myGen
             if on then
                 task.spawn(function()
                     while true do
-                        if runGen ~= myGen then break end
+                        if godGen ~= myGen then break end
                         local now = os.clock()
                         if now - lastGod >= 0.5 then
                             lastGod = now
