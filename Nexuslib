@@ -1677,18 +1677,39 @@ function NexusLib:Window(cfg)
 
         local defAfk = saved.playerAntiAfk == true
         local afkGen = 0
-        local antiAfkRef = T:Toggle("⏱️ Anti AFK","Prevents auto-kick every 55s", defAfk, function(on)
+        -- VirtualUser resets Roblox's 20m idle disconnect (278) when it succeeds. Must never throw: one error would kill the loop until re-toggle.
+        local antiAfkRef = T:Toggle("⏱️ Anti AFK","Synthetic input ~45s · avoids idle kick (pcall-safe)", defAfk, function(on)
             local myGen = newGen(); afkGen = myGen
             if on then
                 task.spawn(function()
                     local VU = game:GetService("VirtualUser")
+                    pcall(function()
+                        VU:CaptureController()
+                    end)
+                    local tickN = 0
                     while true do
                         if afkGen ~= myGen then break end
-                        task.wait(55)
+                        task.wait(45)
                         if afkGen ~= myGen then break end
-                        VU:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-                        task.wait(0.1)
-                        VU:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                        tickN = tickN + 1
+                        pcall(function()
+                            local cam = workspace.CurrentCamera
+                            if not cam then
+                                return
+                            end
+                            local cf = cam.CFrame
+                            local z = Vector2.new(0, 0)
+                            -- Alternate click types; some builds only register one path for idle reset.
+                            if tickN % 2 == 0 then
+                                VU:Button2Down(z, cf)
+                                task.wait(0.06)
+                                VU:Button2Up(z, cf)
+                            else
+                                VU:Button1Down(z, cf)
+                                task.wait(0.06)
+                                VU:Button1Up(z, cf)
+                            end
+                        end)
                     end
                 end)
             end
