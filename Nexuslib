@@ -17,7 +17,7 @@
 --    Tab:Button("🔄","Respawn","Reset char", function() end)
 --    Win:Notify("Done", "Settings saved!", 3, "success")
 --    Win:Destroy()   -- tear down GUI
---    Win:ChatTab()   Win:ListTab({ ... })   Win:PlayerTab()
+--    Win:ChatTab()   Win:ListTab({ ... })   Win:PlayerTab({ saved = {...}, onPersist = function() end })
 -- ============================================================
 
 local NexusLib = {}
@@ -1557,20 +1557,41 @@ function NexusLib:Window(cfg)
     -- ============================================================
     --  BUILT-IN: Player Tab (optimized noclip + god mode throttle)
     -- ============================================================
-    function Win:PlayerTab()
+    --- opts.saved: playerWalkSpeed, playerInfiniteJump, playerAntiAfk, playerNoclip, playerGodMode
+    --- opts.onPersist: optional function() called (deferred) when any player control changes
+    --- Returns tab T, refs { walkSlider, infiniteJump, antiAfk, noclip, godMode } for external save/restore
+    function Win:PlayerTab(opts)
+        opts = type(opts) == "table" and opts or {}
+        local saved = type(opts.saved) == "table" and opts.saved or {}
+        local onPersist = opts.onPersist
+        local function firePersist()
+            if type(onPersist) == "function" then
+                task.defer(onPersist)
+            end
+        end
+
         local T = self:Tab("👤","Player")
         local runGen = newGen()
 
         T:Section("Movement")
 
-        local speedRef = { val = 16 }
-        T:Slider("Walk Speed","Default 16 · Max 300",{min=0,max=300,default=16}, function(v)
+        local ws = tonumber(saved.playerWalkSpeed)
+        if not ws then
+            ws = 16
+        end
+        ws = math.clamp(math.floor(ws), 0, 300)
+        local speedRef = { val = ws }
+        local walkSlider = T:Slider("Walk Speed","Default 16 · Max 300",{min=0,max=300,default=ws}, function(v)
             speedRef.val = v
             local h = getHuman()
-            if h then h.WalkSpeed = v end
+            if h then
+                h.WalkSpeed = v
+            end
+            firePersist()
         end)
 
-        T:Toggle("🚀 Infinite Jump","Jump again while airborne", false, function(on)
+        local defIj = saved.playerInfiniteJump == true
+        local infiniteJumpRef = T:Toggle("🚀 Infinite Jump","Jump again while airborne", defIj, function(on)
             local myGen = newGen(); runGen = myGen
             if on then
                 local conn; conn = UserInputService.JumpRequest:Connect(function()
@@ -1579,6 +1600,7 @@ function NexusLib:Window(cfg)
                     if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
                 end)
             end
+            firePersist()
         end)
 
         Players.LocalPlayer.CharacterAdded:Connect(function(char)
@@ -1588,7 +1610,8 @@ function NexusLib:Window(cfg)
 
         T:Section("Utility")
 
-        T:Toggle("⏱️ Anti AFK","Prevents auto-kick every 55s", false, function(on)
+        local defAfk = saved.playerAntiAfk == true
+        local antiAfkRef = T:Toggle("⏱️ Anti AFK","Prevents auto-kick every 55s", defAfk, function(on)
             local myGen = newGen(); runGen = myGen
             if on then
                 task.spawn(function()
@@ -1603,6 +1626,7 @@ function NexusLib:Window(cfg)
                     end
                 end)
             end
+            firePersist()
         end)
 
         -- Noclip: cache BaseParts (no per-frame GetDescendants)
@@ -1632,7 +1656,8 @@ function NexusLib:Window(cfg)
         rebuildNoclipParts(getChar())
         LP.CharacterAdded:Connect(function(c) rebuildNoclipParts(c) end)
 
-        T:Toggle("👻 No Clip","Walk through walls", false, function(on)
+        local defNc = saved.playerNoclip == true
+        local noclipRef = T:Toggle("👻 No Clip","Walk through walls", defNc, function(on)
             local myGen = newGen(); runGen = myGen
             if on then
                 local lastPrune = 0
@@ -1652,11 +1677,13 @@ function NexusLib:Window(cfg)
                     end
                 end)
             end
+            firePersist()
         end)
 
         -- God mode: throttle to 0.5s
         local lastGod = 0
-        T:Toggle("🛡️ God Mode","Lock health to max", false, function(on)
+        local defGod = saved.playerGodMode == true
+        local godModeRef = T:Toggle("🛡️ God Mode","Lock health to max", defGod, function(on)
             local myGen = newGen(); runGen = myGen
             if on then
                 task.spawn(function()
@@ -1672,6 +1699,7 @@ function NexusLib:Window(cfg)
                     end
                 end)
             end
+            firePersist()
         end)
 
         T:Section("Actions")
@@ -1689,7 +1717,33 @@ function NexusLib:Window(cfg)
             end
         end)
 
-        return T
+        -- Toggles with default true only paint UI; re-Set to run callbacks (loops / connections).
+        if defIj then
+            infiniteJumpRef.Set(true)
+        end
+        if defAfk then
+            antiAfkRef.Set(true)
+        end
+        if defNc then
+            noclipRef.Set(true)
+        end
+        if defGod then
+            godModeRef.Set(true)
+        end
+
+        local h0 = getHuman()
+        if h0 then
+            h0.WalkSpeed = speedRef.val
+        end
+
+        return T,
+            {
+                walkSlider = walkSlider,
+                infiniteJump = infiniteJumpRef,
+                antiAfk = antiAfkRef,
+                noclip = noclipRef,
+                godMode = godModeRef,
+            }
     end
 
     return Win
