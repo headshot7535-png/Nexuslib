@@ -32,34 +32,38 @@ local TweenService     = game:GetService("TweenService")
 local HS               = game:GetService("HttpService")
 
 -- ── Player (client only) ───────────────────────────────────
--- LocalPlayer and PlayerGui can appear at different times on join; waiting for both
--- in one short loop caused return {} (no Window) and "NexusLib failed to load" in hosts.
+-- Bounded wait only (no infinite :Wait() — server has no LocalPlayer).
 local LP = Players.LocalPlayer
-if not LP then
-    for _ = 1, 200 do
-        LP = Players.LocalPlayer
-        if LP then
-            break
-        end
-        task.wait(0.1)
-    end
+local _lpDeadline = os.clock() + 120
+while not LP and os.clock() < _lpDeadline do
+    task.wait(0.1)
+    LP = Players.LocalPlayer
 end
 if not LP then
-    warn("[NexusLib] LocalPlayer not found — run on the client, not the server.")
+    warn("[NexusLib] LocalPlayer not found after 120s — run as a LocalScript / client executor.")
     return {}
 end
 local PlayerGui = LP:FindFirstChildOfClass("PlayerGui")
 if not PlayerGui then
-    for _ = 1, 300 do
-        PlayerGui = LP:FindFirstChildOfClass("PlayerGui")
+    local _pgConn
+    _pgConn = LP.ChildAdded:Connect(function(ch)
+        if ch:IsA("PlayerGui") then
+            PlayerGui = ch
+        end
+    end)
+    for _ = 1, 1200 do
+        PlayerGui = PlayerGui or LP:FindFirstChildOfClass("PlayerGui")
         if PlayerGui then
             break
         end
         task.wait(0.1)
     end
+    if _pgConn then
+        _pgConn:Disconnect()
+    end
 end
 if not PlayerGui then
-    warn("[NexusLib] PlayerGui not ready after 30s — cannot attach UI.")
+    warn("[NexusLib] PlayerGui not ready after 120s.")
     return {}
 end
 
