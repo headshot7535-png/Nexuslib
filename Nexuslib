@@ -1204,7 +1204,7 @@ function NexusLib:Window(cfg)
         local mutedUsers     = {}    -- userId -> true
         local pinnedMsg      = nil   -- { user, text } or nil
         local emojiReactions = {}    -- key -> { emoji -> count }
-        local myNickname     = LP.DisplayName or LP.Name
+        local myNickname     = tostring(_G.NexusLib_ChatNickname or "")
         local dmTarget       = nil   -- userId to DM (nil = global)
         local chatHistory    = {}    -- circular buffer for up-arrow recall
         local historyIdx     = 0
@@ -1256,7 +1256,7 @@ function NexusLib:Window(cfg)
         HeaderIcon.Position = UDim2.new(0,6,0,0)
 
         local HeaderTitle = Instance.new("TextLabel",HeaderBar)
-        HeaderTitle.Text = "# global"; HeaderTitle.Size = UDim2.new(0,140,1,0)
+        HeaderTitle.Text = "# global"; HeaderTitle.Size = UDim2.new(0,220,1,0)
         HeaderTitle.Position = UDim2.new(0,32,0,0)
         HeaderTitle.BackgroundTransparency = 1; HeaderTitle.TextColor3 = C.text
         HeaderTitle.Font = Enum.Font.GothamBold; HeaderTitle.TextSize = 11
@@ -1310,6 +1310,27 @@ function NexusLib:Window(cfg)
         SearchBox.ClearTextOnFocus = false; SearchBox.Visible = false
         Instance.new("UICorner",SearchBox).CornerRadius = UDim.new(0,5)
         Instance.new("UIPadding",SearchBox).PaddingLeft = UDim.new(0,5)
+
+        -- Nickname setup (required before chatting)
+        local NickSetup = Instance.new("Frame", page)
+        NickSetup.Size = UDim2.new(1,-10,0,32)
+        NickSetup.BackgroundColor3 = Color3.fromRGB(16,18,30)
+        NickSetup.BorderSizePixel = 0; NickSetup.LayoutOrder = 3; NickSetup.Visible = false
+        Instance.new("UICorner",NickSetup).CornerRadius = UDim.new(0,8)
+        Instance.new("UIStroke",NickSetup).Color = C.border
+        local NickBox = Instance.new("TextBox", NickSetup)
+        NickBox.Size = UDim2.new(1,-86,1,-8); NickBox.Position = UDim2.new(0,4,0,4)
+        NickBox.BackgroundColor3 = Color3.fromRGB(12,15,26); NickBox.BorderSizePixel = 0
+        NickBox.TextColor3 = C.text; NickBox.Font = Enum.Font.Gotham; NickBox.TextSize = 10
+        NickBox.PlaceholderText = "Set chat username (required)"; NickBox.ClearTextOnFocus = false
+        Instance.new("UICorner",NickBox).CornerRadius = UDim.new(0,6)
+        Instance.new("UIPadding",NickBox).PaddingLeft = UDim.new(0,6)
+        local NickSetBtn = Instance.new("TextButton", NickSetup)
+        NickSetBtn.Size = UDim2.new(0,74,1,-8); NickSetBtn.Position = UDim2.new(1,-78,0,4)
+        NickSetBtn.BackgroundColor3 = C.green; NickSetBtn.BorderSizePixel = 0
+        NickSetBtn.Text = "Set"; NickSetBtn.TextColor3 = Color3.fromRGB(255,255,255)
+        NickSetBtn.Font = Enum.Font.GothamBold; NickSetBtn.TextSize = 10
+        Instance.new("UICorner",NickSetBtn).CornerRadius = UDim.new(0,6)
 
         -- Pinned message bar (hidden until a pin exists)
         local PinBar = Instance.new("Frame",page)
@@ -1393,7 +1414,7 @@ function NexusLib:Window(cfg)
         ChatInput.Size = UDim2.new(1,-82,1,-8); ChatInput.Position = UDim2.new(0,32,0,4)
         ChatInput.BackgroundColor3 = Color3.fromRGB(15,18,30); ChatInput.BorderSizePixel = 0
         ChatInput.TextColor3 = C.text; ChatInput.Font = Enum.Font.Gotham; ChatInput.TextSize = 10
-        ChatInput.PlaceholderText = "Message #global · @ to mention..."
+        ChatInput.PlaceholderText = "Set username first to chat..."
         ChatInput.Text = ""; ChatInput.ClearTextOnFocus = false; ChatInput.ClipsDescendants = true
         Instance.new("UICorner",ChatInput).CornerRadius = UDim.new(0,6)
         Instance.new("UIPadding",ChatInput).PaddingLeft = UDim.new(0,6)
@@ -1682,6 +1703,12 @@ function NexusLib:Window(cfg)
         end
 
         local function doSend(rawText)
+            if not myNickname or myNickname == "" then
+                addSystemLine("Set a chat username first.")
+                NickSetup.Visible = true
+                ChatInput.PlaceholderText = "Set username first to chat..."
+                return
+            end
             rawText = rawText:match("^%s*(.-)%s*$") or ""
             if rawText == "" then return end
             pushHistory(rawText)
@@ -1810,13 +1837,42 @@ function NexusLib:Window(cfg)
             local newName = ChatInput.Text:match("^%s*(.-)%s*$")
             if newName ~= "" and #newName <= 24 then
                 myNickname = newName
+                _G.NexusLib_ChatNickname = myNickname
                 ChatInput.Text = ""
                 addSystemLine("Nickname set to: "..myNickname)
                 HeaderTitle.Text = "# global  (you: "..myNickname..")"
+                NickSetup.Visible = false
+                ChatInput.PlaceholderText = "Message #global · @ to mention..."
             else
                 addSystemLine("Type a nickname in the box (max 24 chars) then click ✏")
             end
         end)
+
+        local function applyNickname(newName)
+            newName = tostring(newName or ""):match("^%s*(.-)%s*$") or ""
+            if newName == "" or #newName > 24 then
+                addSystemLine("Username must be 1-24 characters.")
+                return
+            end
+            myNickname = newName
+            _G.NexusLib_ChatNickname = myNickname
+            NickBox.Text = ""
+            HeaderTitle.Text = "# global  (you: "..myNickname..")"
+            NickSetup.Visible = false
+            ChatInput.PlaceholderText = "Message #global · @ to mention..."
+            addSystemLine("Username set: "..myNickname)
+        end
+        NickSetBtn.MouseButton1Click:Connect(function() applyNickname(NickBox.Text) end)
+        NickBox.FocusLost:Connect(function(enter) if enter then applyNickname(NickBox.Text) end end)
+        if myNickname ~= "" then
+            HeaderTitle.Text = "# global  (you: "..myNickname..")"
+            NickSetup.Visible = false
+            ChatInput.PlaceholderText = "Message #global · @ to mention..."
+        else
+            NickSetup.Visible = true
+            HeaderTitle.Text = "# global  (set username)"
+            ChatInput.PlaceholderText = "Set username first to chat..."
+        end
 
         BtnDM.MouseButton1Click:Connect(function()
             if dmTarget then
