@@ -1210,6 +1210,14 @@ function NexusLib:Window(cfg)
         local historyIdx     = 0
         local feedLineOrder  = 0
         local HISTORY_MAX    = 30
+        local function getResBody(res)
+            if not res then return nil end
+            return res.Body or res.body or res.ResponseBody or res.responseBody
+        end
+        local function getResStatus(res)
+            if not res then return nil end
+            return tonumber(res.StatusCode or res.status_code or res.Status or res.status)
+        end
 
         local function shortSrv()
             local j = game.JobId
@@ -1701,11 +1709,29 @@ function NexusLib:Window(cfg)
                     Headers = { ["Content-Type"] = "application/json" },
                     Body    = payload,
                 })
+                local status = getResStatus(res)
+                local body = getResBody(res)
                 if not ok or not res then
                     addSystemLine("❌ Send failed")
-                elseif res.StatusCode and res.StatusCode >= 400 then
-                    addSystemLine("❌ HTTP "..res.StatusCode)
+                elseif status and status >= 400 then
+                    addSystemLine("❌ HTTP "..status)
                 else
+                    -- Immediate local echo so messages show even if polling is delayed.
+                    local postKey = nil
+                    if type(body) == "string" and body ~= "" then
+                        local okKey, decoded = pcall(HS.JSONDecode, HS, body)
+                        if okKey and type(decoded) == "table" and type(decoded.name) == "string" then
+                            postKey = decoded.name
+                        end
+                    end
+                    postKey = postKey or ("local_"..tostring(os.clock()))
+                    if not seenKeys[postKey] then
+                        seenKeys[postKey] = true
+                        addMessage(
+                            postKey, myNickname, filtered, shortSrv(), LP.UserId,
+                            replyTarget, dmTarget ~= nil, os.time()
+                        )
+                    end
                     replyTarget = nil; ReplyBar.Visible = false
                 end
             end)
@@ -1848,8 +1874,9 @@ function NexusLib:Window(cfg)
                     Method  = "GET",
                     Headers = { ["Accept"] = "application/json" },
                 })
-                if not ok or not res or not res.Body or res.Body == "null" or res.Body == "" then return end
-                local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
+                local body = getResBody(res)
+                if not ok or not res or not body or body == "null" or body == "" then return end
+                local ok2, data = pcall(HS.JSONDecode, HS, body)
                 if not ok2 or type(data) ~= "table" then return end
                 local now = os.time()
                 local who = {}
@@ -1870,8 +1897,9 @@ function NexusLib:Window(cfg)
                     Method  = "GET",
                     Headers = { ["Accept"] = "application/json" },
                 })
-                if not ok or not res or not res.Body or res.Body == "" or res.Body == "null" then return end
-                local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
+                local body = getResBody(res)
+                if not ok or not res or not body or body == "" or body == "null" then return end
+                local ok2, data = pcall(HS.JSONDecode, HS, body)
                 if not ok2 or type(data) ~= "table" then return end
 
                 local msgs = {}
