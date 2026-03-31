@@ -87,7 +87,9 @@ local function censorBlocklist(s)
             local hashes = string.rep("#", #word)
             while true do
                 local low = string.lower(s)
-                local i, j = string.find(low, lw, 1, true)
+                -- Match whole words only (so "hello" doesn't match blocked "hell").
+                local pat = "%f[%w]" .. lw:gsub("(%W)","%%%1") .. "%f[%W]"
+                local i, j = string.find(low, pat)
                 if not i then
                     break
                 end
