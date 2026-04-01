@@ -1161,212 +1161,14 @@ function NexusLib:Window(cfg)
         return T
     end
 
-    -- ============================================================
-    --  BUILT-IN: Chat Tab (optimized: cap seen keys)
-    -- ============================================================
-    function Win:ChatTab(firebaseUrl)
-        firebaseUrl = firebaseUrl or "https://anipixels-chat-default-rtdb.firebaseio.com/chat"
-        local T = self:Tab("💬","Chat")
-
-        local InfoCard = Instance.new("Frame", T._page)
-        InfoCard.Size = UDim2.new(1,-10,0,28); InfoCard.BackgroundColor3 = Color3.fromRGB(30,30,45)
-        InfoCard.BorderSizePixel = 0; InfoCard.LayoutOrder = 1
-        Instance.new("UICorner",InfoCard).CornerRadius = UDim.new(0,8)
-        local InfoLbl = Instance.new("TextLabel",InfoCard)
-        InfoLbl.Size = UDim2.new(1,-10,1,0); InfoLbl.Position = UDim2.new(0,8,0,0)
-        InfoLbl.BackgroundTransparency = 1; InfoLbl.TextColor3 = C.sub
-        InfoLbl.Font = Enum.Font.Gotham; InfoLbl.TextSize = 9; InfoLbl.TextWrapped = true
-        InfoLbl.TextXAlignment = Enum.TextXAlignment.Left
-        InfoLbl.Text = "💬 Cross-server chat · local word filter (edit CHAT_BLOCKLIST in NexusLib). Not cheat-proof."
-
-        local FeedOuter = Instance.new("Frame", T._page)
-        FeedOuter.Size = UDim2.new(1,-10,0,200); FeedOuter.BackgroundColor3 = Color3.fromRGB(14,14,22)
-        FeedOuter.BorderSizePixel = 0; FeedOuter.LayoutOrder = 2; FeedOuter.ClipsDescendants = true
-        Instance.new("UICorner",FeedOuter).CornerRadius = UDim.new(0,10)
-        Instance.new("UIStroke",FeedOuter).Color = C.border
-
-        local FeedScroll = Instance.new("ScrollingFrame",FeedOuter)
-        FeedScroll.Size = UDim2.new(1,0,1,0); FeedScroll.BackgroundTransparency = 1
-        FeedScroll.BorderSizePixel = 0; FeedScroll.ScrollBarThickness = 3
-        FeedScroll.ScrollBarImageColor3 = C.accent; FeedScroll.CanvasSize = UDim2.new(0,0,0,0)
-        FeedScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        local FeedLayout = Instance.new("UIListLayout",FeedScroll)
-        FeedLayout.SortOrder = Enum.SortOrder.LayoutOrder; FeedLayout.Padding = UDim.new(0,2)
-        local FeedPad = Instance.new("UIPadding",FeedScroll)
-        FeedPad.PaddingLeft = UDim.new(0,6); FeedPad.PaddingRight = UDim.new(0,6)
-
-        local feedLineOrder = 0
-        local function scrollFeedToBottom()
-            local maxY = FeedScroll.AbsoluteCanvasSize.Y - FeedScroll.AbsoluteSize.Y
-            if maxY > 0 then
-                FeedScroll.CanvasPosition = Vector2.new(0, maxY)
-            end
-        end
-
-        local function addLine(user, text, server, isSystem)
-            feedLineOrder = feedLineOrder + 1
-            local row = Instance.new("Frame",FeedScroll)
-            row.Size = UDim2.new(1,0,0,0); row.AutomaticSize = Enum.AutomaticSize.Y
-            row.BackgroundTransparency = 1; row.LayoutOrder = feedLineOrder
-            local lbl = Instance.new("TextLabel",row)
-            lbl.Size = UDim2.new(1,0,0,0); lbl.AutomaticSize = Enum.AutomaticSize.Y
-            lbl.BackgroundTransparency = 1; lbl.TextWrapped = true
-            lbl.TextXAlignment = Enum.TextXAlignment.Left
-            lbl.Font = Enum.Font.Code; lbl.TextSize = 10
-            if isSystem then
-                lbl.TextColor3 = C.sub; lbl.Text = "— "..text
-            else
-                lbl.TextColor3 = C.text
-                lbl.Text = "["..tostring(server or "?").."] "..tostring(user or "Anon")..": "..tostring(text)
-            end
-            task.defer(scrollFeedToBottom)
-        end
-
-        local InputCard = Instance.new("Frame",T._page)
-        InputCard.Size = UDim2.new(1,-10,0,36); InputCard.BackgroundColor3 = C.card
-        InputCard.BorderSizePixel = 0; InputCard.LayoutOrder = 3
-        Instance.new("UICorner",InputCard).CornerRadius = UDim.new(0,10)
-        Instance.new("UIStroke",InputCard).Color = C.border
-
-        local ChatInput = Instance.new("TextBox",InputCard)
-        ChatInput.Size = UDim2.new(1,-56,1,-8); ChatInput.Position = UDim2.new(0,8,0,4)
-        ChatInput.BackgroundColor3 = Color3.fromRGB(18,18,26); ChatInput.BorderSizePixel = 0
-        ChatInput.TextColor3 = C.text; ChatInput.Font = Enum.Font.Gotham; ChatInput.TextSize = 10
-        ChatInput.PlaceholderText = "Type a message..."; ChatInput.Text = ""
-        ChatInput.ClearTextOnFocus = false; ChatInput.ClipsDescendants = true
-        Instance.new("UICorner",ChatInput).CornerRadius = UDim.new(0,6)
-        Instance.new("UIPadding",ChatInput).PaddingLeft = UDim.new(0,6)
-
-        local SendBtn = Instance.new("TextButton",InputCard)
-        SendBtn.Size = UDim2.new(0,44,1,-8); SendBtn.Position = UDim2.new(1,-50,0,4)
-        SendBtn.BackgroundColor3 = C.accent; SendBtn.BorderSizePixel = 0
-        SendBtn.TextColor3 = Color3.fromRGB(255,255,255); SendBtn.Font = Enum.Font.GothamBold
-        SendBtn.TextSize = 10; SendBtn.Text = "Send"
-        Instance.new("UICorner",SendBtn).CornerRadius = UDim.new(0,6)
-
-        local OnlineCard = Instance.new("Frame",T._page)
-        OnlineCard.Size = UDim2.new(1,-10,0,20); OnlineCard.BackgroundTransparency = 1
-        OnlineCard.LayoutOrder = 4
-        local OnlineLbl = Instance.new("TextLabel",OnlineCard)
-        OnlineLbl.Size = UDim2.new(1,0,1,0); OnlineLbl.BackgroundTransparency = 1
-        OnlineLbl.TextColor3 = C.sub; OnlineLbl.Font = Enum.Font.Gotham; OnlineLbl.TextSize = 9
-        OnlineLbl.TextXAlignment = Enum.TextXAlignment.Left
-        OnlineLbl.Text = "🟡 Connecting..."
-
-        local function shortSrv()
-            local j = game.JobId
-            return j ~= "" and j:sub(1,5) or "local"
-        end
-
-        local function doSend(text)
-            if text == "" then return end
-            task.spawn(function()
-                local filtered = filterChatTextForViewer(text, LP.UserId, LP.UserId)
-                if filtered == false then
-                    addLine(nil, "❌ Message was fully blocked by moderation.", nil, true)
-                    return
-                end
-                if type(filtered) ~= "string" or filtered == "" then
-                    addLine(nil, "❌ Message empty after filter.", nil, true)
-                    return
-                end
-                local payload = HS:JSONEncode({
-                    user       = "Anonymous",
-                    fromUserId = LP.UserId,
-                    server     = shortSrv(),
-                    text       = filtered,
-                    time       = os.time(),
-                })
-                local ok, res = pcall(httpRequest, {
-                    Url     = firebaseUrl..".json",
-                    Method  = "POST",
-                    Headers = { ["Content-Type"] = "application/json" },
-                    Body    = payload,
-                })
-                if not ok or not res then
-                    addLine(nil, "❌ Send failed: "..tostring(res), nil, true)
-                elseif res.StatusCode and res.StatusCode >= 400 then
-                    addLine(nil, "❌ HTTP "..res.StatusCode, nil, true)
-                end
+    -- ChatTab removed by request (keep safe stub for compatibility).
+    function Win:ChatTab(_firebaseUrl)
+        if self.Notify then
+            pcall(function()
+                self:Notify("Chat Disabled", "Chat tab has been removed from this build.", 3, "warning")
             end)
         end
-
-        SendBtn.MouseButton1Click:Connect(function()
-            local txt = ChatInput.Text:match("^%s*(.-)%s*$")
-            if txt == "" then return end
-            doSend(txt); ChatInput.Text = ""
-        end)
-        ChatInput.FocusLost:Connect(function(enter)
-            if enter then
-                local txt = ChatInput.Text:match("^%s*(.-)%s*$")
-                if txt ~= "" then doSend(txt); ChatInput.Text = "" end
-            end
-        end)
-
-        -- poll: never drop keys from seenKeys — Firebase GET returns full history; evicting keys
-        -- made pruned messages look "new" every poll and re-append duplicates (scroll spam).
-
-        local seenKeys = {}
-
-        task.spawn(function()
-            _G.NexusLib_ChatGen = (_G.NexusLib_ChatGen or 0) + 1
-            local myGen = _G.NexusLib_ChatGen
-
-            local function fetch()
-                local ok, res = pcall(httpRequest, {
-                    Url     = firebaseUrl..".json",
-                    Method  = "GET",
-                    Headers = { ["Accept"] = "application/json" },
-                })
-                if not ok or not res or not res.Body or res.Body == "" or res.Body == "null" then return false end
-                local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
-                if not ok2 or type(data) ~= "table" then return false end
-                local msgs = {}
-                for key, v in pairs(data) do
-                    if type(v) == "table" and v.time and not seenKeys[key] then
-                        table.insert(msgs, {
-                            key = key,
-                            user = v.user,
-                            fromUserId = v.fromUserId,
-                            server = v.server,
-                            text = v.text,
-                            time = v.time,
-                        })
-                    end
-                end
-                table.sort(msgs, function(a, b) return a.time < b.time end)
-                for i = 1, #msgs do
-                    seenKeys[msgs[i].key] = true
-                end
-                if #msgs > 0 then
-                    task.spawn(function()
-                        for i = 1, #msgs do
-                            local m = msgs[i]
-                            local senderId = type(m.fromUserId) == "number" and m.fromUserId or LP.UserId
-                            local raw = type(m.text) == "string" and m.text or ""
-                            local display = filterChatTextForViewer(raw, senderId, LP.UserId)
-                            if display == false then
-                                display = "…"
-                            elseif type(display) ~= "string" or display == "" then
-                                display = "…"
-                            end
-                            addLine(m.user, display, m.server, false)
-                        end
-                    end)
-                end
-                return #msgs > 0
-            end
-
-            fetch()
-            OnlineLbl.Text = "🟢 Live"
-
-            while true do
-                if _G.NexusLib_ChatGen ~= myGen then break end
-                task.wait(3)
-                if _G.NexusLib_ChatGen ~= myGen then break end
-                fetch()
-            end
-        end)
+        return nil
     end
 
     -- ============================================================
@@ -1613,7 +1415,7 @@ function NexusLib:Window(cfg)
         end
 
         local T = self:Tab("👤","Player")
-        local runGen = newGen()
+        -- Separate gens per toggle: a shared runGen broke Infinite Jump when Anti-AFK / Noclip / God also default ON (last Set overwrote runGen).
 
         T:Section("Movement")
 
@@ -1633,38 +1435,83 @@ function NexusLib:Window(cfg)
         end)
 
         local defIj = saved.playerInfiniteJump == true
+        local ijGen = 0
+        local ijJumpConn
         local infiniteJumpRef = T:Toggle("🚀 Infinite Jump","Jump again while airborne", defIj, function(on)
-            local myGen = newGen(); runGen = myGen
+            local myGen = newGen(); ijGen = myGen
+            if ijJumpConn then
+                pcall(function()
+                    ijJumpConn:Disconnect()
+                end)
+                ijJumpConn = nil
+            end
             if on then
-                local conn; conn = UserInputService.JumpRequest:Connect(function()
-                    if runGen ~= myGen then conn:Disconnect(); return end
+                ijJumpConn = UserInputService.JumpRequest:Connect(function()
+                    if ijGen ~= myGen then
+                        return
+                    end
                     local h = getHuman()
-                    if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+                    if h then
+                        h:ChangeState(Enum.HumanoidStateType.Jumping)
+                    end
                 end)
             end
             firePersist()
         end)
 
-        Players.LocalPlayer.CharacterAdded:Connect(function(char)
+        local function refreshInfiniteJumpIfEnabled()
+            task.defer(function()
+                if infiniteJumpRef.Get() == true then
+                    infiniteJumpRef.Set(true)
+                end
+            end)
+        end
+        LP.CharacterAdded:Connect(function(char)
             local h = char:WaitForChild("Humanoid", 5)
-            if h then h.WalkSpeed = speedRef.val end
+            if h then
+                h.WalkSpeed = speedRef.val
+            end
+            -- Re-arm IJ after spawn: Humanoid just appeared; JumpRequest re-hook matches manual re-toggle.
+            refreshInfiniteJumpIfEnabled()
         end)
 
         T:Section("Utility")
 
         local defAfk = saved.playerAntiAfk == true
-        local antiAfkRef = T:Toggle("⏱️ Anti AFK","Prevents auto-kick every 55s", defAfk, function(on)
-            local myGen = newGen(); runGen = myGen
+        local afkGen = 0
+        -- VirtualUser resets Roblox's 20m idle disconnect (278) when it succeeds. Must never throw: one error would kill the loop until re-toggle.
+        local antiAfkRef = T:Toggle("⏱️ Anti AFK","Synthetic input ~45s · avoids idle kick (pcall-safe)", defAfk, function(on)
+            local myGen = newGen(); afkGen = myGen
             if on then
                 task.spawn(function()
                     local VU = game:GetService("VirtualUser")
+                    pcall(function()
+                        VU:CaptureController()
+                    end)
+                    local tickN = 0
                     while true do
-                        if runGen ~= myGen then break end
-                        task.wait(55)
-                        if runGen ~= myGen then break end
-                        VU:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
-                        task.wait(0.1)
-                        VU:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                        if afkGen ~= myGen then break end
+                        task.wait(45)
+                        if afkGen ~= myGen then break end
+                        tickN = tickN + 1
+                        pcall(function()
+                            local cam = workspace.CurrentCamera
+                            if not cam then
+                                return
+                            end
+                            local cf = cam.CFrame
+                            local z = Vector2.new(0, 0)
+                            -- Alternate click types; some builds only register one path for idle reset.
+                            if tickN % 2 == 0 then
+                                VU:Button2Down(z, cf)
+                                task.wait(0.06)
+                                VU:Button2Up(z, cf)
+                            else
+                                VU:Button1Down(z, cf)
+                                task.wait(0.06)
+                                VU:Button1Up(z, cf)
+                            end
+                        end)
                     end
                 end)
             end
@@ -1699,12 +1546,13 @@ function NexusLib:Window(cfg)
         LP.CharacterAdded:Connect(function(c) rebuildNoclipParts(c) end)
 
         local defNc = saved.playerNoclip == true
+        local ncGen = 0
         local noclipRef = T:Toggle("👻 No Clip","Walk through walls", defNc, function(on)
-            local myGen = newGen(); runGen = myGen
+            local myGen = newGen(); ncGen = myGen
             if on then
                 local lastPrune = 0
                 local conn; conn = RunService.Stepped:Connect(function()
-                    if runGen ~= myGen then conn:Disconnect(); return end
+                    if ncGen ~= myGen then conn:Disconnect(); return end
                     local now = os.clock()
                     if now - lastPrune > 5 then
                         lastPrune = now
@@ -1725,12 +1573,13 @@ function NexusLib:Window(cfg)
         -- God mode: throttle to 0.5s
         local lastGod = 0
         local defGod = saved.playerGodMode == true
+        local godGen = 0
         local godModeRef = T:Toggle("🛡️ God Mode","Lock health to max", defGod, function(on)
-            local myGen = newGen(); runGen = myGen
+            local myGen = newGen(); godGen = myGen
             if on then
                 task.spawn(function()
                     while true do
-                        if runGen ~= myGen then break end
+                        if godGen ~= myGen then break end
                         local now = os.clock()
                         if now - lastGod >= 0.5 then
                             lastGod = now
@@ -1760,9 +1609,7 @@ function NexusLib:Window(cfg)
         end)
 
         -- Toggles with default true only paint UI; re-Set to run callbacks (loops / connections).
-        if defIj then
-            infiniteJumpRef.Set(true)
-        end
+        -- Apply Infinite Jump last so nothing else overwrites shared state / duplicate Set order; IJ must win.
         if defAfk then
             antiAfkRef.Set(true)
         end
@@ -1771,6 +1618,13 @@ function NexusLib:Window(cfg)
         end
         if defGod then
             godModeRef.Set(true)
+        end
+        if defIj then
+            infiniteJumpRef.Set(true)
+        end
+        -- Character already loaded: same as CharacterAdded (library built after spawn — first Set can be too early).
+        if LP.Character then
+            refreshInfiniteJumpIfEnabled()
         end
 
         local h0 = getHuman()
