@@ -1212,6 +1212,80 @@ function NexusLib:Window(cfg)
         local historyIdx     = 0
         local feedLineOrder  = 0
         local HISTORY_MAX    = 30
+        local IDENTITY_FILE  = "nexuslib_chat_identity.json"
+        local function getDeviceKey()
+            local hw = nil
+            pcall(function()
+                hw = (gethwid and gethwid())
+                    or (syn and syn.gethwid and syn.gethwid())
+                    or (identifyexecutor and identifyexecutor())
+            end)
+            hw = tostring(hw or "")
+            if hw == "" or hw == "nil" then
+                hw = "uid_"..tostring(LP.UserId)
+            end
+            return hw
+        end
+        local DEVICE_KEY = getDeviceKey()
+        local function loadIdentityMap()
+            local map = {}
+            pcall(function()
+                if isfile and isfile(IDENTITY_FILE) then
+                    local raw = readfile(IDENTITY_FILE)
+                    local ok, dec = pcall(HS.JSONDecode, HS, raw)
+                    if ok and type(dec) == "table" then map = dec end
+                end
+            end)
+            return map
+        end
+        local function saveIdentityMap(map)
+            pcall(function()
+                if writefile then
+                    writefile(IDENTITY_FILE, HS:JSONEncode(map))
+                end
+            end)
+        end
+        local identityMap = loadIdentityMap()
+        local lockedNickname = tostring(identityMap[DEVICE_KEY] or "")
+        if lockedNickname ~= "" then
+            myNickname = lockedNickname
+            _G.NexusLib_ChatNickname = lockedNickname
+        end
+        local OWNER_URL = firebaseUrl:gsub("/chat$","").."/owners"
+        local function normalizeName(n)
+            n = tostring(n or ""):lower()
+            n = n:gsub("%s+"," "):match("^%s*(.-)%s*$") or ""
+            return n
+        end
+        local function claimNameForDevice(name)
+            local key = normalizeName(name)
+            if key == "" then return false, "invalid username" end
+            local url = OWNER_URL.."/"..HS:UrlEncode(key)..".json"
+            local okGet,resGet = pcall(httpRequest,{
+                Url=url, Method="GET", Headers={["Accept"]="application/json"},
+            })
+            local bodyGet = getResBody(resGet)
+            local existing = nil
+            if okGet and bodyGet and bodyGet ~= "" and bodyGet ~= "null" then
+                local okDec, dec = pcall(HS.JSONDecode, HS, bodyGet)
+                if okDec and type(dec)=="table" and dec.owner then
+                    existing = tostring(dec.owner)
+                elseif okDec and type(dec)=="string" then
+                    existing = tostring(dec)
+                end
+            end
+            if existing and existing ~= "" and existing ~= DEVICE_KEY then
+                return false, "username owned by another device"
+            end
+            local payload = HS:JSONEncode({owner=DEVICE_KEY, name=name, updated=os.time()})
+            local okPut,resPut = pcall(httpRequest,{
+                Url=url, Method="PUT", Headers={["Content-Type"]="application/json"}, Body=payload,
+            })
+            local status = getResStatus(resPut)
+            if not okPut or not resPut then return false, "claim failed" end
+            if status and status >= 400 then return false, "claim http "..tostring(status) end
+            return true
+        end
         local function getResBody(res)
             if not res then return nil end
             return res.Body or res.body or res.ResponseBody or res.responseBody
@@ -1837,9 +1911,24 @@ function NexusLib:Window(cfg)
 
         BtnNick.MouseButton1Click:Connect(function()
             local newName = ChatInput.Text:match("^%s*(.-)%s*$")
+            if lockedNickname ~= "" and newName ~= lockedNickname then
+                addSystemLine("Username is locked to this device: "..lockedNickname)
+                ChatInput.Text = ""
+                return
+            end
             if newName ~= "" and #newName <= 24 then
+                local okClaim, claimErr = claimNameForDevice(newName)
+                if not okClaim then
+                    addSystemLine("❌ "..tostring(claimErr))
+                    return
+                end
                 myNickname = newName
                 _G.NexusLib_ChatNickname = myNickname
+                if lockedNickname == "" then
+                    lockedNickname = myNickname
+                    identityMap[DEVICE_KEY] = myNickname
+                    saveIdentityMap(identityMap)
+                end
                 ChatInput.Text = ""
                 addSystemLine("Nickname set to: "..myNickname)
                 HeaderTitle.Text = "# global  (you: "..myNickname..")"
@@ -1856,13 +1945,27 @@ function NexusLib:Window(cfg)
                 addSystemLine("Username must be 1-24 characters.")
                 return
             end
+            if lockedNickname ~= "" and newName ~= lockedNickname then
+                addSystemLine("Username is locked to this device: "..lockedNickname)
+                return
+            end
+            local okClaim, claimErr = claimNameForDevice(newName)
+            if not okClaim then
+                addSystemLine("❌ "..tostring(claimErr))
+                return
+            end
             myNickname = newName
             _G.NexusLib_ChatNickname = myNickname
+            if lockedNickname == "" then
+                lockedNickname = myNickname
+                identityMap[DEVICE_KEY] = myNickname
+                saveIdentityMap(identityMap)
+            end
             NickBox.Text = ""
             HeaderTitle.Text = "# global  (you: "..myNickname..")"
             NickSetup.Visible = false
             ChatInput.PlaceholderText = "Message #global · @ to mention..."
-            addSystemLine("Username set: "..myNickname)
+            addSystemLine("Username set: "..myNickname.." (locked to this device)")
         end
         NickSetBtn.MouseButton1Click:Connect(function() applyNickname(NickBox.Text) end)
         NickBox.FocusLost:Connect(function(enter) if enter then applyNickname(NickBox.Text) end end)
@@ -1935,7 +2038,7 @@ function NexusLib:Window(cfg)
                 local body = getResBody(res)
                 if not ok or not res or not body or body == "null" or body == "" then return end
                 local ok2, data = pcall(HS.JSONDecode, HS, body)
-                if not ok2 or type(data) ~= "table" then return end
+                if type(data) ~= "table" then return end
                 local now = os.time()
                 local who = {}
                 for uid, v in pairs(data) do
@@ -1950,14 +2053,24 @@ function NexusLib:Window(cfg)
             end
 
             local function fetch()
-                local ok, res = pcall(httpRequest, {
-                    Url     = firebaseUrl..".json?orderBy=\"time\"&limitToLast=60",
-                    Method  = "GET",
-                    Headers = { ["Accept"] = "application/json" },
-                })
-                local body = getResBody(res)
-                if not ok or not res or not body or body == "" or body == "null" then return end
-                local ok2, data = pcall(HS.JSONDecode, HS, body)
+                local function tryFetch(url)
+                    local ok, res = pcall(httpRequest, {
+                        Url     = url,
+                        Method  = "GET",
+                        Headers = { ["Accept"] = "application/json" },
+                    })
+                    local body = getResBody(res)
+                    if not ok or not res or not body or body == "" or body == "null" then return nil end
+                    local ok2, data = pcall(HS.JSONDecode, HS, body)
+                    if not ok2 or type(data) ~= "table" then return nil end
+                    return data
+                end
+
+                -- Primary: Firebase query. Fallback: plain chat dump (executor-safe).
+                local data = tryFetch(firebaseUrl..".json?orderBy=%22time%22&limitToLast=120")
+                if not data then
+                    data = tryFetch(firebaseUrl..".json")
+                end
                 if not ok2 or type(data) ~= "table" then return end
 
                 local msgs = {}
@@ -1976,7 +2089,14 @@ function NexusLib:Window(cfg)
                         end
                     end
                 end
-                table.sort(msgs, function(a,b) return a.time < b.time end)
+                table.sort(msgs, function(a,b) return tonumber(a.time or 0) < tonumber(b.time or 0) end)
+                if #msgs > 120 then
+                    local trimmed = {}
+                    for i = #msgs-119, #msgs do
+                        trimmed[#trimmed+1] = msgs[i]
+                    end
+                    msgs = trimmed
+                end
 
                 for _, m in ipairs(msgs) do
                     seenKeys[m.key] = true
