@@ -395,11 +395,14 @@ function NexusLib:Window(cfg)
         end
     end
 
-    -- ── Live user count ──────────────────────────────────────
+    -- ── Live user count (Firebase HTTP) ──────────────────────
+    -- Default OFF: blocking HTTP + full-tree JSON decode hitches many executors (~20s).
+    -- Opt in: _G.NexusLib_EnablePresence = true before loading NexusLib.
     local function startPresence()
         _G.NexusLib_PresenceGen = (_G.NexusLib_PresenceGen or 0) + 1
         local myGen = _G.NexusLib_PresenceGen
         local serverID = game.JobId ~= "" and game.JobId:sub(1,8) or "studio"
+        local pollSec = type(_G.NexusLib_PresencePollSec) == "number" and math.clamp(_G.NexusLib_PresencePollSec, 30, 600) or 120
 
         local function upsert()
             pcall(httpRequest, {
@@ -445,14 +448,18 @@ function NexusLib:Window(cfg)
                     })
                     break
                 end
-                task.wait(20)
+                task.wait(pollSec)
                 upsert()
                 count = countOnline()
                 OnlineCountLbl.Text = "🟢 "..count.." online"
             end
         end)
     end
-    startPresence()
+    if _G.NexusLib_EnablePresence == true then
+        startPresence()
+    else
+        OnlineCountLbl.Visible = false
+    end
 
     function Win:Tab(icon, name)
         local btn = Instance.new("TextButton", TabBar)
@@ -1161,14 +1168,212 @@ function NexusLib:Window(cfg)
         return T
     end
 
-    -- ChatTab removed by request (keep safe stub for compatibility).
-    function Win:ChatTab(_firebaseUrl)
-        if self.Notify then
-            pcall(function()
-                self:Notify("Chat Disabled", "Chat tab has been removed from this build.", 3, "warning")
+    -- ============================================================
+    --  BUILT-IN: Chat Tab (optimized: cap seen keys)
+    -- ============================================================
+    function Win:ChatTab(firebaseUrl)
+        firebaseUrl = firebaseUrl or "https://anipixels-chat-default-rtdb.firebaseio.com/chat"
+        local T = self:Tab("💬","Chat")
+
+        local InfoCard = Instance.new("Frame", T._page)
+        InfoCard.Size = UDim2.new(1,-10,0,28); InfoCard.BackgroundColor3 = Color3.fromRGB(30,30,45)
+        InfoCard.BorderSizePixel = 0; InfoCard.LayoutOrder = 1
+        Instance.new("UICorner",InfoCard).CornerRadius = UDim.new(0,8)
+        local InfoLbl = Instance.new("TextLabel",InfoCard)
+        InfoLbl.Size = UDim2.new(1,-10,1,0); InfoLbl.Position = UDim2.new(0,8,0,0)
+        InfoLbl.BackgroundTransparency = 1; InfoLbl.TextColor3 = C.sub
+        InfoLbl.Font = Enum.Font.Gotham; InfoLbl.TextSize = 9; InfoLbl.TextWrapped = true
+        InfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+        InfoLbl.Text = "💬 Cross-server chat · local word filter (edit CHAT_BLOCKLIST in NexusLib). Not cheat-proof."
+
+        local FeedOuter = Instance.new("Frame", T._page)
+        FeedOuter.Size = UDim2.new(1,-10,0,200); FeedOuter.BackgroundColor3 = Color3.fromRGB(14,14,22)
+        FeedOuter.BorderSizePixel = 0; FeedOuter.LayoutOrder = 2; FeedOuter.ClipsDescendants = true
+        Instance.new("UICorner",FeedOuter).CornerRadius = UDim.new(0,10)
+        Instance.new("UIStroke",FeedOuter).Color = C.border
+
+        local FeedScroll = Instance.new("ScrollingFrame",FeedOuter)
+        FeedScroll.Size = UDim2.new(1,0,1,0); FeedScroll.BackgroundTransparency = 1
+        FeedScroll.BorderSizePixel = 0; FeedScroll.ScrollBarThickness = 3
+        FeedScroll.ScrollBarImageColor3 = C.accent; FeedScroll.CanvasSize = UDim2.new(0,0,0,0)
+        FeedScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        local FeedLayout = Instance.new("UIListLayout",FeedScroll)
+        FeedLayout.SortOrder = Enum.SortOrder.LayoutOrder; FeedLayout.Padding = UDim.new(0,2)
+        local FeedPad = Instance.new("UIPadding",FeedScroll)
+        FeedPad.PaddingLeft = UDim.new(0,6); FeedPad.PaddingRight = UDim.new(0,6)
+
+        local feedLineOrder = 0
+        local function scrollFeedToBottom()
+            local maxY = FeedScroll.AbsoluteCanvasSize.Y - FeedScroll.AbsoluteSize.Y
+            if maxY > 0 then
+                FeedScroll.CanvasPosition = Vector2.new(0, maxY)
+            end
+        end
+
+        local function addLine(user, text, server, isSystem)
+            feedLineOrder = feedLineOrder + 1
+            local row = Instance.new("Frame",FeedScroll)
+            row.Size = UDim2.new(1,0,0,0); row.AutomaticSize = Enum.AutomaticSize.Y
+            row.BackgroundTransparency = 1; row.LayoutOrder = feedLineOrder
+            local lbl = Instance.new("TextLabel",row)
+            lbl.Size = UDim2.new(1,0,0,0); lbl.AutomaticSize = Enum.AutomaticSize.Y
+            lbl.BackgroundTransparency = 1; lbl.TextWrapped = true
+            lbl.TextXAlignment = Enum.TextXAlignment.Left
+            lbl.Font = Enum.Font.Code; lbl.TextSize = 10
+            if isSystem then
+                lbl.TextColor3 = C.sub; lbl.Text = "— "..text
+            else
+                lbl.TextColor3 = C.text
+                lbl.Text = "["..tostring(server or "?").."] "..tostring(user or "Anon")..": "..tostring(text)
+            end
+            task.defer(scrollFeedToBottom)
+        end
+
+        local InputCard = Instance.new("Frame",T._page)
+        InputCard.Size = UDim2.new(1,-10,0,36); InputCard.BackgroundColor3 = C.card
+        InputCard.BorderSizePixel = 0; InputCard.LayoutOrder = 3
+        Instance.new("UICorner",InputCard).CornerRadius = UDim.new(0,10)
+        Instance.new("UIStroke",InputCard).Color = C.border
+
+        local ChatInput = Instance.new("TextBox",InputCard)
+        ChatInput.Size = UDim2.new(1,-56,1,-8); ChatInput.Position = UDim2.new(0,8,0,4)
+        ChatInput.BackgroundColor3 = Color3.fromRGB(18,18,26); ChatInput.BorderSizePixel = 0
+        ChatInput.TextColor3 = C.text; ChatInput.Font = Enum.Font.Gotham; ChatInput.TextSize = 10
+        ChatInput.PlaceholderText = "Type a message..."; ChatInput.Text = ""
+        ChatInput.ClearTextOnFocus = false; ChatInput.ClipsDescendants = true
+        Instance.new("UICorner",ChatInput).CornerRadius = UDim.new(0,6)
+        Instance.new("UIPadding",ChatInput).PaddingLeft = UDim.new(0,6)
+
+        local SendBtn = Instance.new("TextButton",InputCard)
+        SendBtn.Size = UDim2.new(0,44,1,-8); SendBtn.Position = UDim2.new(1,-50,0,4)
+        SendBtn.BackgroundColor3 = C.accent; SendBtn.BorderSizePixel = 0
+        SendBtn.TextColor3 = Color3.fromRGB(255,255,255); SendBtn.Font = Enum.Font.GothamBold
+        SendBtn.TextSize = 10; SendBtn.Text = "Send"
+        Instance.new("UICorner",SendBtn).CornerRadius = UDim.new(0,6)
+
+        local OnlineCard = Instance.new("Frame",T._page)
+        OnlineCard.Size = UDim2.new(1,-10,0,20); OnlineCard.BackgroundTransparency = 1
+        OnlineCard.LayoutOrder = 4
+        local OnlineLbl = Instance.new("TextLabel",OnlineCard)
+        OnlineLbl.Size = UDim2.new(1,0,1,0); OnlineLbl.BackgroundTransparency = 1
+        OnlineLbl.TextColor3 = C.sub; OnlineLbl.Font = Enum.Font.Gotham; OnlineLbl.TextSize = 9
+        OnlineLbl.TextXAlignment = Enum.TextXAlignment.Left
+        OnlineLbl.Text = "🟡 Connecting..."
+
+        local function shortSrv()
+            local j = game.JobId
+            return j ~= "" and j:sub(1,5) or "local"
+        end
+
+        local function doSend(text)
+            if text == "" then return end
+            task.spawn(function()
+                local filtered = filterChatTextForViewer(text, LP.UserId, LP.UserId)
+                if filtered == false then
+                    addLine(nil, "❌ Message was fully blocked by moderation.", nil, true)
+                    return
+                end
+                if type(filtered) ~= "string" or filtered == "" then
+                    addLine(nil, "❌ Message empty after filter.", nil, true)
+                    return
+                end
+                local payload = HS:JSONEncode({
+                    user       = "Anonymous",
+                    fromUserId = LP.UserId,
+                    server     = shortSrv(),
+                    text       = filtered,
+                    time       = os.time(),
+                })
+                local ok, res = pcall(httpRequest, {
+                    Url     = firebaseUrl..".json",
+                    Method  = "POST",
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body    = payload,
+                })
+                if not ok or not res then
+                    addLine(nil, "❌ Send failed: "..tostring(res), nil, true)
+                elseif res.StatusCode and res.StatusCode >= 400 then
+                    addLine(nil, "❌ HTTP "..res.StatusCode, nil, true)
+                end
             end)
         end
-        return nil
+
+        SendBtn.MouseButton1Click:Connect(function()
+            local txt = ChatInput.Text:match("^%s*(.-)%s*$")
+            if txt == "" then return end
+            doSend(txt); ChatInput.Text = ""
+        end)
+        ChatInput.FocusLost:Connect(function(enter)
+            if enter then
+                local txt = ChatInput.Text:match("^%s*(.-)%s*$")
+                if txt ~= "" then doSend(txt); ChatInput.Text = "" end
+            end
+        end)
+
+        -- poll: never drop keys from seenKeys — Firebase GET returns full history; evicting keys
+        -- made pruned messages look "new" every poll and re-append duplicates (scroll spam).
+
+        local seenKeys = {}
+
+        task.spawn(function()
+            _G.NexusLib_ChatGen = (_G.NexusLib_ChatGen or 0) + 1
+            local myGen = _G.NexusLib_ChatGen
+
+            local function fetch()
+                local ok, res = pcall(httpRequest, {
+                    Url     = firebaseUrl..".json",
+                    Method  = "GET",
+                    Headers = { ["Accept"] = "application/json" },
+                })
+                if not ok or not res or not res.Body or res.Body == "" or res.Body == "null" then return false end
+                local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
+                if not ok2 or type(data) ~= "table" then return false end
+                local msgs = {}
+                for key, v in pairs(data) do
+                    if type(v) == "table" and v.time and not seenKeys[key] then
+                        table.insert(msgs, {
+                            key = key,
+                            user = v.user,
+                            fromUserId = v.fromUserId,
+                            server = v.server,
+                            text = v.text,
+                            time = v.time,
+                        })
+                    end
+                end
+                table.sort(msgs, function(a, b) return a.time < b.time end)
+                for i = 1, #msgs do
+                    seenKeys[msgs[i].key] = true
+                end
+                if #msgs > 0 then
+                    task.spawn(function()
+                        for i = 1, #msgs do
+                            local m = msgs[i]
+                            local senderId = type(m.fromUserId) == "number" and m.fromUserId or LP.UserId
+                            local raw = type(m.text) == "string" and m.text or ""
+                            local display = filterChatTextForViewer(raw, senderId, LP.UserId)
+                            if display == false then
+                                display = "…"
+                            elseif type(display) ~= "string" or display == "" then
+                                display = "…"
+                            end
+                            addLine(m.user, display, m.server, false)
+                        end
+                    end)
+                end
+                return #msgs > 0
+            end
+
+            fetch()
+            OnlineLbl.Text = "🟢 Live"
+
+            while true do
+                if _G.NexusLib_ChatGen ~= myGen then break end
+                task.wait(3)
+                if _G.NexusLib_ChatGen ~= myGen then break end
+                fetch()
+            end
+        end)
     end
 
     -- ============================================================
