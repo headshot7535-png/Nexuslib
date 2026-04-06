@@ -509,6 +509,14 @@ function NexusLib:Window(cfg)
         end
 
         function T:Toggle(label, desc, default, cb)
+            -- Toggle(label, default, cb) when desc was omitted: 2nd arg is boolean/number and 3rd is callback.
+            if (type(desc) == "boolean" or type(desc) == "number") and type(default) == "function" and cb == nil then
+                cb = default
+                default = desc
+                desc = ""
+            end
+            label = type(label) == "string" and label or tostring(label or "")
+            desc = type(desc) == "string" and desc or (desc ~= nil and tostring(desc) or "")
             order = order + 1
             local state = default or false
             local Card = Instance.new("Frame", page)
@@ -518,12 +526,14 @@ function NexusLib:Window(cfg)
             local cs = Instance.new("UIStroke",Card); cs.Color = C.border; cs.Thickness = 1
 
             local nL = Instance.new("TextLabel",Card)
-            nL.Text = label; nL.Size = UDim2.new(1,-120,0,18); nL.Position = UDim2.new(0,14,0,8)
+            nL.Text = label
+            nL.Size = UDim2.new(1,-120,0,18); nL.Position = UDim2.new(0,14,0,8)
             nL.BackgroundTransparency = 1; nL.TextColor3 = C.text
             nL.Font = Enum.Font.GothamBold; nL.TextSize = 12; nL.TextXAlignment = Enum.TextXAlignment.Left
 
             local dL = Instance.new("TextLabel",Card)
-            dL.Text = desc or ""; dL.Size = UDim2.new(1,-120,0,14); dL.Position = UDim2.new(0,14,0,28)
+            dL.Text = desc
+            dL.Size = UDim2.new(1,-120,0,14); dL.Position = UDim2.new(0,14,0,28)
             dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub
             dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
 
