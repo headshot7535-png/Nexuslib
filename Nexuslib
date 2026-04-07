@@ -696,7 +696,18 @@ function NexusLib:Window(cfg)
         end
 
         function T:Button(icon, label, desc, accentCol, cb)
-            if type(accentCol) == "function" then cb = accentCol; accentCol = nil end
+            -- Button(icon, label, cb) — 3rd arg is callback (no description line).
+            if type(desc) == "function" and accentCol == nil and cb == nil then
+                cb = desc
+                desc = ""
+            end
+            if type(accentCol) == "function" and cb == nil then
+                cb = accentCol
+                accentCol = nil
+            end
+            icon = type(icon) == "string" and icon or tostring(icon or "")
+            label = type(label) == "string" and label or tostring(label or "")
+            desc = type(desc) == "string" and desc or (desc ~= nil and tostring(desc) or "")
             accentCol = accentCol or C.accent
             order = order + 1
 
@@ -707,17 +718,20 @@ function NexusLib:Window(cfg)
             local cs = Instance.new("UIStroke",Card); cs.Color = accentCol; cs.Thickness = 1
 
             local iL = Instance.new("TextLabel",Card)
-            iL.Text = icon; iL.Size = UDim2.new(0,36,1,0); iL.Position = UDim2.new(0,6,0,0)
+            iL.Text = icon
+            iL.Size = UDim2.new(0,36,1,0); iL.Position = UDim2.new(0,6,0,0)
             iL.BackgroundTransparency = 1; iL.TextSize = 18; iL.Font = Enum.Font.GothamBold
             iL.TextXAlignment = Enum.TextXAlignment.Center
 
             local nL = Instance.new("TextLabel",Card)
-            nL.Text = label; nL.Size = UDim2.new(1,-50,0,18); nL.Position = UDim2.new(0,46,0,6)
+            nL.Text = label
+            nL.Size = UDim2.new(1,-50,0,18); nL.Position = UDim2.new(0,46,0,6)
             nL.BackgroundTransparency = 1; nL.TextColor3 = accentCol
             nL.Font = Enum.Font.GothamBold; nL.TextSize = 11; nL.TextXAlignment = Enum.TextXAlignment.Left
 
             local dL = Instance.new("TextLabel",Card)
-            dL.Text = desc or ""; dL.Size = UDim2.new(1,-50,0,13); dL.Position = UDim2.new(0,46,0,24)
+            dL.Text = desc
+            dL.Size = UDim2.new(1,-50,0,13); dL.Position = UDim2.new(0,46,0,24)
             dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub
             dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
 
