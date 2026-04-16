@@ -144,6 +144,18 @@ function NexusLib:Window(cfg)
     Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     Screen.Parent = LP.PlayerGui
 
+    -- Connection registry: every global signal connection (UserInputService,
+    -- LP.CharacterAdded, RunService, etc.) gets tracked here so Destroy can
+    -- clean them up. Without this, old closures holding references to
+    -- destroyed frames leak on every re-execution.
+    local _conns = {}
+    local function track(conn)
+        if typeof(conn) == "RBXScriptConnection" then
+            _conns[#_conns+1] = conn
+        end
+        return conn
+    end
+
     -- ── Toggle icon ──────────────────────────────────────────
     local ICON_IMAGE_OPEN = "rbxassetid://3117561276"
     local Icon = Instance.new("ImageButton", Screen)
@@ -168,21 +180,21 @@ function NexusLib:Window(cfg)
 
     -- icon drag
     local iDrag, iDragStart, iStartPos = false
-    Icon.InputBegan:Connect(function(i)
+    track(Icon.InputBegan:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then
             iDrag = true; iDragStart = i.Position; iStartPos = Icon.Position
         end
-    end)
-    Icon.InputEnded:Connect(function(i)
+    end))
+    track(Icon.InputEnded:Connect(function(i)
         if i.UserInputType == Enum.UserInputType.MouseButton1 then iDrag = false end
-    end)
-    UserInputService.InputChanged:Connect(function(i)
+    end))
+    track(UserInputService.InputChanged:Connect(function(i)
         if iDrag and i.UserInputType == Enum.UserInputType.MouseMovement then
             local d = i.Position - iDragStart
             Icon.Position = UDim2.new(iStartPos.X.Scale, iStartPos.X.Offset+d.X,
                                       iStartPos.Y.Scale, iStartPos.Y.Offset+d.Y)
         end
-    end)
+    end))
 
     -- ── Main frame ───────────────────────────────────────────
     local Main = Instance.new("Frame", Screen)
@@ -206,11 +218,11 @@ function NexusLib:Window(cfg)
             iStroke.Transparency = 0.2
         end
     end
-    Icon.MouseButton1Click:Connect(function()
+    track(Icon.MouseButton1Click:Connect(function()
         Main.Visible = not Main.Visible
         updateIconForState()
-    end)
-    Main:GetPropertyChangedSignal("Visible"):Connect(updateIconForState)
+    end))
+    track(Main:GetPropertyChangedSignal("Visible"):Connect(updateIconForState))
 
     -- ── Title bar ────────────────────────────────────────────
     local TitleBar = Instance.new("Frame", Main)
@@ -322,7 +334,7 @@ function NexusLib:Window(cfg)
     NotifyPad.PaddingRight = UDim.new(0, 8)
     NotifyPad.PaddingBottom = UDim.new(0, 24)
 
-    local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab }
+    local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab, _conns=_conns, _track=track }
 
     function Win:Status(msg) SLbl.Text = msg end
 
@@ -390,6 +402,14 @@ function NexusLib:Window(cfg)
     end
 
     function Win:Destroy()
+        -- Disconnect all tracked global connections first — otherwise closures
+        -- referencing destroyed frames keep firing on every mouse move.
+        if self._conns then
+            for i = 1, #self._conns do
+                pcall(function() self._conns[i]:Disconnect() end)
+            end
+            table.clear(self._conns)
+        end
         if self._screen and self._screen.Parent then
             self._screen:Destroy()
         end
@@ -657,16 +677,16 @@ function NexusLib:Window(cfg)
             Knob.InputBegan:Connect(function(i)
                 if isPressStart(i) then dragging = true end
             end)
-            UserInputService.InputChanged:Connect(function(i)
+            track(UserInputService.InputChanged:Connect(function(i)
                 if not dragging then return end
                 if i.UserInputType == Enum.UserInputType.MouseMovement
                     or i.UserInputType == Enum.UserInputType.Touch then
                     apply(i.Position.X)
                 end
-            end)
-            UserInputService.InputEnded:Connect(function(i)
+            end))
+            track(UserInputService.InputEnded:Connect(function(i)
                 if isPressEnd(i) then dragging = false end
-            end)
+            end))
             Track.InputBegan:Connect(function(i)
                 if isPressStart(i) then apply(i.Position.X) end
             end)
@@ -1035,8 +1055,8 @@ function NexusLib:Window(cfg)
                 if cb then cb(current) end
             end
             hueGradient.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then hueDragging = true; updateColorFromHue(i.Position.X) end end)
-            UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then hueDragging = false end end)
-            UserInputService.InputChanged:Connect(function(i) if hueDragging and i.UserInputType == Enum.UserInputType.MouseMovement then updateColorFromHue(i.Position.X) end end)
+            track(UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then hueDragging = false end end))
+            track(UserInputService.InputChanged:Connect(function(i) if hueDragging and i.UserInputType == Enum.UserInputType.MouseMovement then updateColorFromHue(i.Position.X) end end))
 
             colorBtn.MouseButton1Click:Connect(function()
                 pickerOpen = not pickerOpen
@@ -1333,8 +1353,8 @@ function NexusLib:Window(cfg)
             if opts.onThreshold then opts.onThreshold(v) end
         end
         thKnob.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then thDrag = true end end)
-        UserInputService.InputChanged:Connect(function(i) if thDrag and i.UserInputType == Enum.UserInputType.MouseMovement then thApply(i.Position.X) end end)
-        UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then thDrag = false end end)
+        track(UserInputService.InputChanged:Connect(function(i) if thDrag and i.UserInputType == Enum.UserInputType.MouseMovement then thApply(i.Position.X) end end))
+        track(UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then thDrag = false end end))
         thTrack.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then thApply(i.Position.X) end end)
 
         -- Search + list
@@ -1473,21 +1493,30 @@ function NexusLib:Window(cfg)
                 end
             end)
         end
-        LP.CharacterAdded:Connect(function(char)
+        track(LP.CharacterAdded:Connect(function(char)
             local h = char:WaitForChild("Humanoid", 5)
             if h then
                 h.WalkSpeed = speedRef.val
             end
             -- Re-arm IJ after spawn: Humanoid just appeared; JumpRequest re-hook matches manual re-toggle.
             refreshInfiniteJumpIfEnabled()
-        end)
+        end))
 
         T:Section("Utility")
 
         local defAfk = saved.playerAntiAfk == true
         local afkGen = 0
-        -- VirtualUser resets Roblox's 20m idle disconnect (278) when it succeeds. Must never throw: one error would kill the loop until re-toggle.
-        local antiAfkRef = T:Toggle("⏱️ Anti AFK","Synthetic input ~15 min · avoids idle kick (pcall-safe)", defAfk, function(on)
+        -- Dual-signal anti-AFK. Two independent timers need resetting:
+        --   1. Roblox's built-in 20-min idle disconnect (event code 278).
+        --      Reset by VirtualUser input (Button1Down/Button2Down).
+        --   2. Games' own UserInputService-based idle detectors (e.g. the
+        --      Summon Heroes PVP handler that server-hops at 1080s of no
+        --      UserInputService.InputBegan / InputChanged events).
+        --      Reset by VirtualInputManager:SendKeyEvent, which DOES raise
+        --      UserInputService events — VirtualUser does not.
+        -- Interval: 540s (9min) fires below both thresholds. Pcall-safe:
+        -- one error must never kill the loop.
+        local antiAfkRef = T:Toggle("⏱️ Anti AFK","Dual-signal: VirtualUser + VirtualInputManager · resets Roblox + in-game idle timers", defAfk, function(on)
             local myGen = newGen(); afkGen = myGen
             if on then
                 task.spawn(function()
@@ -1498,9 +1527,10 @@ function NexusLib:Window(cfg)
                     local tickN = 0
                     while true do
                         if afkGen ~= myGen then break end
-                        task.wait(900)
+                        task.wait(540)
                         if afkGen ~= myGen then break end
                         tickN = tickN + 1
+                        -- VirtualUser mouse click → Roblox 20-min idle reset.
                         pcall(function()
                             local cam = workspace.CurrentCamera
                             if not cam then
@@ -1508,7 +1538,6 @@ function NexusLib:Window(cfg)
                             end
                             local cf = cam.CFrame
                             local z = Vector2.new(0, 0)
-                            -- Alternate click types; some builds only register one path for idle reset.
                             if tickN % 2 == 0 then
                                 VU:Button2Down(z, cf)
                                 task.wait(0.06)
@@ -1518,6 +1547,15 @@ function NexusLib:Window(cfg)
                                 task.wait(0.06)
                                 VU:Button1Up(z, cf)
                             end
+                        end)
+                        -- VirtualInputManager key event → UserInputService
+                        -- event reset. KeyCode.Unknown does nothing in-game
+                        -- (no camera move, no character action, no chat).
+                        pcall(function()
+                            local vim = game:GetService("VirtualInputManager")
+                            vim:SendKeyEvent(true,  Enum.KeyCode.Unknown, false, game)
+                            task.wait(0.05)
+                            vim:SendKeyEvent(false, Enum.KeyCode.Unknown, false, game)
                         end)
                     end
                 end)
@@ -1550,16 +1588,25 @@ function NexusLib:Window(cfg)
             end)
         end
         rebuildNoclipParts(getChar())
-        LP.CharacterAdded:Connect(function(c) rebuildNoclipParts(c) end)
+        track(LP.CharacterAdded:Connect(function(c) rebuildNoclipParts(c) end))
 
         local defNc = saved.playerNoclip == true
         local ncGen = 0
+        local ncConn -- current Stepped connection so we can disconnect synchronously on re-toggle
         local noclipRef = T:Toggle("👻 No Clip","Walk through walls", defNc, function(on)
             local myGen = newGen(); ncGen = myGen
+            -- Disconnect previous connection immediately to avoid pileup on fast toggles.
+            if ncConn then
+                pcall(function() ncConn:Disconnect() end)
+                ncConn = nil
+            end
             if on then
                 local lastPrune = 0
-                local conn; conn = RunService.Stepped:Connect(function()
-                    if ncGen ~= myGen then conn:Disconnect(); return end
+                ncConn = RunService.Stepped:Connect(function()
+                    if ncGen ~= myGen then
+                        if ncConn then pcall(function() ncConn:Disconnect() end); ncConn = nil end
+                        return
+                    end
                     local now = os.clock()
                     if now - lastPrune > 5 then
                         lastPrune = now
