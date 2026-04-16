@@ -917,11 +917,26 @@ function NexusLib:Window(cfg)
                     return curIdx, cur and cur.value, cur and cur.text
                 end,
                 --- Replace options (e.g. Profile units). selectValue = optional value to keep selected.
+                --- For multi-select, selectValue can be a table of values to re-select.
                 Refresh = function(newOptions, selectValue)
                     rebuildOptionList(newOptions)
                     listFrame.Visible = false
                     if isMulti then
+                        -- Clear, then re-apply selections by VALUE. This preserves
+                        -- the user's picks across options-list rebuilds (e.g. when
+                        -- shop items update after a purchase).
                         for i = 1, #list do selected[i] = false end
+                        if type(selectValue) == "table" then
+                            local want = {}
+                            for _, v in ipairs(selectValue) do
+                                if type(v) == "string" then want[v] = true end
+                            end
+                            for i, it in ipairs(list) do
+                                if it.value ~= nil and want[tostring(it.value)] then
+                                    selected[i] = true
+                                end
+                            end
+                        end
                         curIdx = math.clamp(1, 1, math.max(1, #list))
                         cur = list[curIdx]
                     else
