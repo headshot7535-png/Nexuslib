@@ -767,8 +767,34 @@ function NexusLib:Window(cfg)
             local cur = list[curIdx]
             local selected = {}
             if isMulti then
+                local anySelected = false
                 for _, idx in ipairs(type(defaultIndex) == "table" and defaultIndex or {}) do
-                    if idx >= 1 and idx <= #list then selected[idx] = true end
+                    if type(idx) == "number" and idx >= 1 and idx <= #list then
+                        selected[idx] = true
+                        anySelected = true
+                    end
+                end
+                -- Obfuscation-resilient fallback: if we have options but
+                -- defaultIndex failed to match any (string encryption mangles
+                -- the map lookup in the caller), auto-select the "*" option
+                -- if present so the widget doesn't silently render "None".
+                if not anySelected and #list > 0 then
+                    local starIdx = nil
+                    for i, it in ipairs(list) do
+                        local t = type(it.text) == "string" and it.text or ""
+                        local v = type(it.value) == "string" and it.value or ""
+                        if t == "*" or v == "*" then
+                            starIdx = i
+                            break
+                        end
+                    end
+                    if starIdx then
+                        selected[starIdx] = true
+                    else
+                        -- No star — select the first option so something
+                        -- actually appears instead of the "None" label.
+                        selected[1] = true
+                    end
                 end
             end
 
@@ -922,10 +948,10 @@ function NexusLib:Window(cfg)
                     rebuildOptionList(newOptions)
                     listFrame.Visible = false
                     if isMulti then
-                        -- Clear, then re-apply selections by VALUE. This preserves
-                        -- the user's picks across options-list rebuilds (e.g. when
-                        -- shop items update after a purchase).
+                        -- Clear, then re-apply selections by VALUE. Preserves
+                        -- user's picks across options-list rebuilds.
                         for i = 1, #list do selected[i] = false end
+                        local anySelected = false
                         if type(selectValue) == "table" then
                             local want = {}
                             for _, v in ipairs(selectValue) do
@@ -934,8 +960,24 @@ function NexusLib:Window(cfg)
                             for i, it in ipairs(list) do
                                 if it.value ~= nil and want[tostring(it.value)] then
                                     selected[i] = true
+                                    anySelected = true
                                 end
                             end
+                        end
+                        -- Same obfuscation-resilient fallback as constructor:
+                        -- if nothing matched, pick the "*" option if present,
+                        -- else the first option.
+                        if not anySelected and #list > 0 then
+                            local starIdx = nil
+                            for i, it in ipairs(list) do
+                                local t = type(it.text) == "string" and it.text or ""
+                                local v = type(it.value) == "string" and it.value or ""
+                                if t == "*" or v == "*" then
+                                    starIdx = i
+                                    break
+                                end
+                            end
+                            selected[starIdx or 1] = true
                         end
                         curIdx = math.clamp(1, 1, math.max(1, #list))
                         cur = list[curIdx]
