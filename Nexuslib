@@ -134,6 +134,19 @@ local function newGen() _featureRunGen = _featureRunGen + 1; return _featureRunG
 function NexusLib:Window(cfg)
     cfg = cfg or {}
     local title  = cfg.title  or "NexusLib"
+
+    -- ── Pending-write queue ───────────────────────────────────────────────
+    -- Some executors demote Heartbeat/spawned threads below the 'Plugin'
+    -- capability required to write Instance properties (l.Text = s, etc.).
+    -- Instead of writing directly from those threads, callers push onto this
+    -- queue. A RunService.Heartbeat connection on the MAIN thread (created
+    -- below, after the ScreenGui is parented) drains the queue each frame —
+    -- main-thread Heartbeat callbacks always have Plugin capability because
+    -- the UI was created there. setthreadidentity is intentionally NOT used.
+    local _pendingWrites = {}
+    local function queueWrite(instance, prop, value)
+        _pendingWrites[#_pendingWrites + 1] = { i = instance, p = prop, v = value }
+    end
     -- Default dimensions: landscape, ~1.4:1 aspect. Roomy enough for a side
     -- tab rail + wide single-column content. Caller can still override.
     local W      = cfg.width  or 820
@@ -164,6 +177,22 @@ function NexusLib:Window(cfg)
         end
         return conn
     end
+
+    -- ── Main-thread write drainer ─────────────────────────────────────────
+    -- This Heartbeat fires on the engine's main thread (same thread that
+    -- created the ScreenGui) so it always has Plugin capability. Any thread
+    -- that needs to mutate a UI Instance calls queueWrite(); this drainer
+    -- applies them safely every frame. The table is cleared in-place to
+    -- avoid GC churn on a hot path.
+    track(game:GetService("RunService").Heartbeat:Connect(function()
+        if #_pendingWrites == 0 then return end
+        local batch = _pendingWrites
+        _pendingWrites = {}
+        for i = 1, #batch do
+            local w = batch[i]
+            pcall(function() w.i[w.p] = w.v end)
+        end
+    end))
 
     -- ── Toggle icon ──────────────────────────────────────────
     local ICON_IMAGE_OPEN = "rbxassetid://3117561276"
@@ -413,7 +442,7 @@ function NexusLib:Window(cfg)
 
     local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab, _conns=_conns, _track=track }
 
-    function Win:Status(msg) pcall(function() SLbl.Text = msg end) end
+    function Win:Status(msg) queueWrite(SLbl, "Text", msg) end
 
     function Win:Notify(title, text, duration, notifType)
         title = title or "Notification"
@@ -896,12 +925,10 @@ function NexusLib:Window(cfg)
             l.TextColor3 = C.sub; l.Font = Enum.Font.Gotham; l.TextSize = 10
             l.TextXAlignment = Enum.TextXAlignment.Left; l.TextWrapped = true
             l.Text = txt
-            -- Raw l.Text = s — no pcall. If the thread lacks Plugin capability
-            -- the error will bubble up to the caller's pcall and show in F9
-            -- via warn(), which is exactly what we want for debugging why
-            -- labels aren't updating. Previously the silent pcall-eat here
-            -- hid the root cause.
-            return { Set = function(s) l.Text = s end }
+            -- Queue the write so it executes on the main-thread Heartbeat
+            -- drainer below, which always has Plugin capability regardless
+            -- of which thread the caller runs on.
+            return { Set = function(s) queueWrite(l, "Text", s) end }
         end
 
         -- Dropdown: single-select by default, set multi=true for multi-select
@@ -1292,7 +1319,7 @@ function NexusLib:Window(cfg)
             l.Size = UDim2.new(1,0,0,0); l.AutomaticSize = Enum.AutomaticSize.Y
             l.BackgroundTransparency = 1; l.TextColor3 = C.sub; l.Font = Enum.Font.Gotham; l.TextSize = 10
             l.TextXAlignment = Enum.TextXAlignment.Left; l.TextWrapped = true; l.Text = txt or ""
-            return { Set = function(s) l.Text = tostring(s) end }
+            return { Set = function(s) queueWrite(l, "Text", tostring(s)) end }
         end
 
         -- MultiSelect: options = { "A", "B" } or { {text="A", value=1}, ... }, defaultIndices = { 1, 3 }, cb(selectedIndices, selectedValues)
