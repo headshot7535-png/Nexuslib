@@ -881,7 +881,15 @@ function NexusLib:Window(cfg)
             l.TextColor3 = C.sub; l.Font = Enum.Font.Gotham; l.TextSize = 10
             l.TextXAlignment = Enum.TextXAlignment.Left; l.TextWrapped = true
             l.Text = txt
-            return { Set = function(s) l.Text = s end }
+            -- Wrap the text mutation in pcall. Some executors demote
+            -- scheduler threads (task.spawn / task.defer) below the
+            -- Plugin capability needed to write Instance properties.
+            -- Without this pcall, every refresh of a label from those
+            -- threads throws "The current thread cannot access
+            -- 'Instance' (lacking capability Plugin)", aborting the
+            -- surrounding refresh function and leaving downstream labels
+            -- stuck on their initial "Loading..." text.
+            return { Set = function(s) pcall(function() l.Text = s end) end }
         end
 
         -- Dropdown: single-select by default, set multi=true for multi-select
