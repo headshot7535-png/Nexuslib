@@ -413,7 +413,7 @@ function NexusLib:Window(cfg)
 
     local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab, _conns=_conns, _track=track }
 
-    function Win:Status(msg) SLbl.Text = msg end
+    function Win:Status(msg) pcall(function() SLbl.Text = msg end) end
 
     function Win:Notify(title, text, duration, notifType)
         title = title or "Notification"
@@ -691,18 +691,26 @@ function NexusLib:Window(cfg)
 
             local function setState(on)
                 state = on
+                -- Wrap every Instance write in pcall. Some executors demote
+                -- spawned/deferred threads below the 'Plugin' capability
+                -- needed to mutate UI Instances — a raw TweenService:Create
+                -- or SLbl.Text write from those threads throws
+                -- "The current thread cannot access 'Instance' (lacking
+                -- capability Plugin)" and aborts. Pcall lets the state
+                -- and callback still fire cleanly; only the visual tween
+                -- is silently skipped on restricted threads.
                 if on then
-                    TweenService:Create(Pill, ti,{BackgroundColor3=C.accentD}):Play()
-                    TweenService:Create(Thumb,ti,{Position=UDim2.new(0,23,0.5,-9),BackgroundColor3=C.accent}):Play()
-                    cs.Color = C.accentD
-                    badge.Text = "ON"; badge.TextColor3 = C.accent
-                    badge.BackgroundColor3 = C.accentBg
+                    pcall(function() TweenService:Create(Pill, ti,{BackgroundColor3=C.accentD}):Play() end)
+                    pcall(function() TweenService:Create(Thumb,ti,{Position=UDim2.new(0,23,0.5,-9),BackgroundColor3=C.accent}):Play() end)
+                    pcall(function() cs.Color = C.accentD end)
+                    pcall(function() badge.Text = "ON"; badge.TextColor3 = C.accent end)
+                    pcall(function() badge.BackgroundColor3 = C.accentBg end)
                 else
-                    TweenService:Create(Pill, ti,{BackgroundColor3=C.border}):Play()
-                    TweenService:Create(Thumb,ti,{Position=UDim2.new(0,3,0.5,-9),BackgroundColor3=C.sub}):Play()
-                    cs.Color = C.border
-                    badge.Text = "OFF"; badge.TextColor3 = C.sub
-                    badge.BackgroundColor3 = C.panel
+                    pcall(function() TweenService:Create(Pill, ti,{BackgroundColor3=C.border}):Play() end)
+                    pcall(function() TweenService:Create(Thumb,ti,{Position=UDim2.new(0,3,0.5,-9),BackgroundColor3=C.sub}):Play() end)
+                    pcall(function() cs.Color = C.border end)
+                    pcall(function() badge.Text = "OFF"; badge.TextColor3 = C.sub end)
+                    pcall(function() badge.BackgroundColor3 = C.panel end)
                 end
                 if cb then cb(on) end
             end
