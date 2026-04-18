@@ -413,8 +413,12 @@ function NexusLib:Window(cfg)
 
     local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab, _conns=_conns, _track=track }
 
-    -- Worker threads (task.spawn / executor) cannot write PlayerGui; yield through Heartbeat first.
-    local function uiThreadSafe(fn)
+    -- Prefer instant update on the main thread; if Instance access fails (executor worker / Plugin
+    -- capability), defer once past Heartbeat — same pattern for Status, Notify, presence label.
+    local function runSafeOnPlayerGui(fn)
+        if pcall(fn) then
+            return
+        end
         task.defer(function()
             pcall(function()
                 RunService.Heartbeat:Wait()
@@ -426,7 +430,7 @@ function NexusLib:Window(cfg)
     function Win:Status(msg)
         msg = tostring(msg or "")
         local lbl = SLbl
-        uiThreadSafe(function()
+        runSafeOnPlayerGui(function()
             if lbl and lbl.Parent then
                 lbl.Text = msg
             end
@@ -444,7 +448,7 @@ function NexusLib:Window(cfg)
         elseif notifType == "error" then accent = C.red
         end
         local winSelf = self
-        uiThreadSafe(function()
+        runSafeOnPlayerGui(function()
             local container = winSelf._screen and winSelf._screen:FindFirstChild("NotifyContainer")
             if not container then
                 return
@@ -556,7 +560,15 @@ function NexusLib:Window(cfg)
         task.spawn(function()
             upsert()
             local count = countOnline()
-            OnlineCountLbl.Text = "🟢 "..count.." online"
+            local function setOnlineLbl(n)
+                local s = "🟢 " .. tostring(n) .. " online"
+                runSafeOnPlayerGui(function()
+                    if OnlineCountLbl and OnlineCountLbl.Parent then
+                        OnlineCountLbl.Text = s
+                    end
+                end)
+            end
+            setOnlineLbl(count)
             while true do
                 if _G.NexusLib_PresenceGen ~= myGen then
                     pcall(httpRequest, {
@@ -570,7 +582,7 @@ function NexusLib:Window(cfg)
                 task.wait(pollSec)
                 upsert()
                 count = countOnline()
-                OnlineCountLbl.Text = "🟢 "..count.." online"
+                setOnlineLbl(count)
             end
         end)
     end
