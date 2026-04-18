@@ -103,20 +103,25 @@ local function httpRequest(opts)
 end
 
 -- ── Theme ─────────────────────────────────────────────────────
+-- Slate + indigo palette. Tuned for readability and low eye-fatigue:
+-- slate bg (warmer than pure black) + indigo accent (softer than pure cyan).
 local C = {
-    bg      = Color3.fromRGB(8,10,18),
-    panel   = Color3.fromRGB(12,15,26),
-    card    = Color3.fromRGB(15,19,32),
-    border  = Color3.fromRGB(25,35,60),
-    accent  = Color3.fromRGB(0,180,255),
-    accentD = Color3.fromRGB(0,100,180),
-    text    = Color3.fromRGB(210,225,245),
-    sub     = Color3.fromRGB(60,80,120),
-    green   = Color3.fromRGB(0,200,100),
-    purple  = Color3.fromRGB(160,80,255),
-    red     = Color3.fromRGB(255,70,70),
-    orange  = Color3.fromRGB(255,160,30),
-    gold    = Color3.fromRGB(255,210,50),
+    bg      = Color3.fromRGB(17, 20, 28),      -- soft slate, warmer than pure black
+    panel   = Color3.fromRGB(23, 27, 38),      -- one tick lighter, for sub-surfaces
+    card    = Color3.fromRGB(28, 33, 46),      -- cards pop gently against panel
+    border  = Color3.fromRGB(48, 55, 75),      -- muted, not sharp
+    accent  = Color3.fromRGB(129, 140, 248),   -- indigo-400, reads "premium tool"
+    accentD = Color3.fromRGB(79, 92, 220),     -- deeper indigo for hover/pressed
+    text    = Color3.fromRGB(226, 230, 240),   -- warm off-white, easy on eyes
+    sub     = Color3.fromRGB(140, 150, 170),   -- readable secondary (was too dark)
+    green   = Color3.fromRGB(74, 222, 128),    -- emerald-400, softer than lime
+    purple  = Color3.fromRGB(167, 139, 250),   -- violet-400, matches palette
+    red     = Color3.fromRGB(248, 113, 113),   -- red-400, softer than blood red
+    orange  = Color3.fromRGB(251, 146, 60),    -- orange-400
+    gold    = Color3.fromRGB(250, 204, 21),    -- yellow-400
+    -- Faint accent-tinted surface — for ON-state badges, active tab body, etc.
+    -- Deeper than panel but still well under the accent so text stays readable.
+    accentBg = Color3.fromRGB(35, 40, 70),
 }
 
 -- ── Built-in feature state ────────────────────────────────────
@@ -129,8 +134,12 @@ local function newGen() _featureRunGen = _featureRunGen + 1; return _featureRunG
 function NexusLib:Window(cfg)
     cfg = cfg or {}
     local title  = cfg.title  or "NexusLib"
-    local W      = cfg.width  or 360
-    local H      = cfg.height or 620
+    -- Default dimensions: landscape, ~1.4:1 aspect. Roomy enough for a side
+    -- tab rail + wide single-column content. Caller can still override.
+    local W      = cfg.width  or 820
+    local H      = cfg.height or 560
+    -- Side tab rail width — fixed at 170 to fit icon + text label nicely.
+    local SIDEBAR_W = 170
 
     -- destroy old if re-executed
     pcall(function()
@@ -162,7 +171,7 @@ function NexusLib:Window(cfg)
     Icon.Image = ICON_IMAGE_OPEN
     Icon.Size = UDim2.new(0,50,0,50)
     Icon.Position = UDim2.new(0,10,0.5,-25)
-    Icon.BackgroundColor3 = Color3.fromRGB(5,5,15)
+    Icon.BackgroundColor3 = C.panel
     Icon.BorderSizePixel = 0; Icon.ZIndex = 20
     Icon.ScaleType = Enum.ScaleType.Fit
     Instance.new("UICorner",Icon).CornerRadius = UDim.new(1,0)
@@ -204,7 +213,7 @@ function NexusLib:Window(cfg)
     Main.Active = true; Main.Draggable = true; Main.ClipsDescendants = true
     Instance.new("UICorner",Main).CornerRadius = UDim.new(0,14)
     local mStroke = Instance.new("UIStroke",Main)
-    mStroke.Color = C.accent; mStroke.Thickness = 1.5; mStroke.Transparency = 0.6
+    mStroke.Color = C.accent; mStroke.Thickness = 1.5; mStroke.Transparency = 0.45
 
     local function updateIconForState()
         local minimized = not Main.Visible
@@ -224,59 +233,120 @@ function NexusLib:Window(cfg)
     end))
     track(Main:GetPropertyChangedSignal("Visible"):Connect(updateIconForState))
 
-    -- ── Title bar ────────────────────────────────────────────
-    local TitleBar = Instance.new("Frame", Main)
-    TitleBar.Size = UDim2.new(1,0,0,46); TitleBar.BackgroundTransparency = 1
+    -- ── Sidebar (title + tab rail) ──────────────────────────
+    -- Left-aligned vertical column containing the script title, a thin
+    -- divider, and the stacked tab buttons. Matches the Rayfield /
+    -- Goomba Hub / modern-exploit-UI convention.
+    local Sidebar = Instance.new("Frame", Main)
+    Sidebar.Size = UDim2.new(0, SIDEBAR_W, 1, -20)  -- full height minus status bar
+    Sidebar.Position = UDim2.new(0, 0, 0, 0)
+    Sidebar.BackgroundColor3 = C.panel
+    Sidebar.BorderSizePixel = 0
+    -- Right edge: subtle vertical divider.
+    local sideDivider = Instance.new("Frame", Sidebar)
+    sideDivider.Size = UDim2.new(0, 1, 1, 0)
+    sideDivider.Position = UDim2.new(1, -1, 0, 0)
+    sideDivider.BackgroundColor3 = C.border
+    sideDivider.BackgroundTransparency = 0.4
+    sideDivider.BorderSizePixel = 0
+
+    -- ── Title block (top of sidebar) ────────────────────────
+    local TitleBar = Instance.new("Frame", Sidebar)
+    TitleBar.Size = UDim2.new(1, 0, 0, 56)
+    TitleBar.BackgroundTransparency = 1
 
     local TitleLbl = Instance.new("TextLabel", TitleBar)
-    TitleLbl.Text = title; TitleLbl.Size = UDim2.new(1,-60,1,0); TitleLbl.Position = UDim2.new(0,14,0,0)
-    TitleLbl.BackgroundTransparency = 1; TitleLbl.TextColor3 = C.text
-    TitleLbl.Font = Enum.Font.GothamBold; TitleLbl.TextSize = 15
+    TitleLbl.Text = title
+    TitleLbl.Size = UDim2.new(1, -50, 1, 0)
+    TitleLbl.Position = UDim2.new(0, 16, 0, 0)
+    TitleLbl.BackgroundTransparency = 1
+    TitleLbl.TextColor3 = C.text
+    TitleLbl.Font = Enum.Font.GothamBold
+    TitleLbl.TextSize = 15
     TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLbl.TextYAlignment = Enum.TextYAlignment.Center
 
-    local CloseBtn = Instance.new("TextButton", TitleBar)
-    CloseBtn.Text = "✕"; CloseBtn.Size = UDim2.new(0,28,0,28)
-    CloseBtn.Position = UDim2.new(1,-36,0.5,-14)
-    CloseBtn.BackgroundColor3 = Color3.fromRGB(60,20,20); CloseBtn.BorderSizePixel = 0
-    CloseBtn.TextColor3 = C.red; CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 12
-    Instance.new("UICorner",CloseBtn).CornerRadius = UDim.new(1,0)
+    -- Close button sits top-right of the whole window (not sidebar).
+    local CloseBtn = Instance.new("TextButton", Main)
+    CloseBtn.Text = "✕"
+    CloseBtn.Size = UDim2.new(0, 28, 0, 28)
+    CloseBtn.Position = UDim2.new(1, -38, 0, 14)
+    CloseBtn.BackgroundColor3 = C.card
+    CloseBtn.BorderSizePixel = 0
+    CloseBtn.TextColor3 = C.sub
+    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.TextSize = 12
+    CloseBtn.ZIndex = 5
+    Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(1, 0)
+    local cbStroke = Instance.new("UIStroke", CloseBtn)
+    cbStroke.Color = C.border; cbStroke.Thickness = 1; cbStroke.Transparency = 0.3
+    CloseBtn.MouseEnter:Connect(function()
+        CloseBtn.TextColor3 = C.red
+        cbStroke.Color = C.red
+        cbStroke.Transparency = 0.1
+    end)
+    CloseBtn.MouseLeave:Connect(function()
+        CloseBtn.TextColor3 = C.sub
+        cbStroke.Color = C.border
+        cbStroke.Transparency = 0.3
+    end)
     CloseBtn.MouseButton1Click:Connect(function() Main.Visible = false end)
 
-    -- ── Tab bar (scrollable) ─────────────────────────────────
-    local TabBar = Instance.new("ScrollingFrame", Main)
-    TabBar.Size = UDim2.new(1,-20,0,34); TabBar.Position = UDim2.new(0,10,0,50)
-    TabBar.BackgroundColor3 = C.card; TabBar.BorderSizePixel = 0
-    TabBar.ScrollBarThickness = 0; TabBar.ScrollingDirection = Enum.ScrollingDirection.X
-    TabBar.AutomaticCanvasSize = Enum.AutomaticSize.X; TabBar.CanvasSize = UDim2.new(0,0,0,0)
-    TabBar.ClipsDescendants = true
-    Instance.new("UICorner",TabBar).CornerRadius = UDim.new(0,10)
-    Instance.new("UIStroke",TabBar).Color = C.border
-    local TBLayout = Instance.new("UIListLayout", TabBar)
-    TBLayout.FillDirection = Enum.FillDirection.Horizontal
-    TBLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-    TBLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    TBLayout.Padding = UDim.new(0,4)
-    local TBPad = Instance.new("UIPadding", TabBar)
-    TBPad.PaddingLeft = UDim.new(0,4); TBPad.PaddingRight = UDim.new(0,4)
+    -- Horizontal divider below title.
+    local titleDivider = Instance.new("Frame", Sidebar)
+    titleDivider.Size = UDim2.new(1, -24, 0, 1)
+    titleDivider.Position = UDim2.new(0, 12, 0, 56)
+    titleDivider.BackgroundColor3 = C.border
+    titleDivider.BackgroundTransparency = 0.5
+    titleDivider.BorderSizePixel = 0
 
-    -- ── Content area ─────────────────────────────────────────
+    -- ── Tab bar (vertical, scrollable) ──────────────────────
+    local TabBar = Instance.new("ScrollingFrame", Sidebar)
+    TabBar.Size = UDim2.new(1, 0, 1, -66)  -- sidebar height minus title block
+    TabBar.Position = UDim2.new(0, 0, 0, 64)
+    TabBar.BackgroundTransparency = 1
+    TabBar.BorderSizePixel = 0
+    TabBar.ScrollBarThickness = 2
+    TabBar.ScrollBarImageColor3 = C.border
+    TabBar.ScrollingDirection = Enum.ScrollingDirection.Y
+    TabBar.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    TabBar.CanvasSize = UDim2.new(0, 0, 0, 0)
+    TabBar.ClipsDescendants = true
+    local TBLayout = Instance.new("UIListLayout", TabBar)
+    TBLayout.FillDirection = Enum.FillDirection.Vertical
+    TBLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    TBLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    TBLayout.Padding = UDim.new(0, 3)
+    local TBPad = Instance.new("UIPadding", TabBar)
+    TBPad.PaddingTop = UDim.new(0, 4)
+    TBPad.PaddingLeft = UDim.new(0, 10)
+    TBPad.PaddingRight = UDim.new(0, 10)
+
+    -- ── Content area (right of sidebar) ─────────────────────
     local Content = Instance.new("Frame", Main)
-    Content.Size = UDim2.new(1,-20,1,-108); Content.Position = UDim2.new(0,10,0,90)
-    Content.BackgroundTransparency = 1; Content.BorderSizePixel = 0
+    Content.Size = UDim2.new(1, -SIDEBAR_W - 16, 1, -34)  -- right of sidebar, above status
+    Content.Position = UDim2.new(0, SIDEBAR_W + 8, 0, 8)
+    Content.BackgroundTransparency = 1
+    Content.BorderSizePixel = 0
     Content.ClipsDescendants = true
 
     -- ── Status bar ───────────────────────────────────────────
     local StatusBar = Instance.new("Frame", Main)
     StatusBar.Size = UDim2.new(1,0,0,20); StatusBar.Position = UDim2.new(0,0,1,-20)
-    StatusBar.BackgroundColor3 = Color3.fromRGB(5,6,12); StatusBar.BorderSizePixel = 0
+    StatusBar.BackgroundColor3 = C.panel; StatusBar.BorderSizePixel = 0
+    -- Thin top border visually separates status from content without a hard line.
+    local statusTopBorder = Instance.new("Frame", StatusBar)
+    statusTopBorder.Size = UDim2.new(1,0,0,1); statusTopBorder.Position = UDim2.new(0,0,0,0)
+    statusTopBorder.BackgroundColor3 = C.border; statusTopBorder.BorderSizePixel = 0
+    statusTopBorder.BackgroundTransparency = 0.5
     local SDot = Instance.new("Frame", StatusBar)
     SDot.Size = UDim2.new(0,5,0,5); SDot.Position = UDim2.new(0,10,0.5,-2.5)
     SDot.BackgroundColor3 = C.accent; SDot.BorderSizePixel = 0
     Instance.new("UICorner",SDot).CornerRadius = UDim.new(1,0)
     local SLbl = Instance.new("TextLabel", StatusBar)
-    SLbl.Text = "Ready · NexusLib v1.2"; SLbl.Size = UDim2.new(1,-115,1,0)
+    SLbl.Text = "Ready"; SLbl.Size = UDim2.new(1,-115,1,0)
     SLbl.Position = UDim2.new(0,20,0,0); SLbl.BackgroundTransparency = 1
-    SLbl.TextColor3 = C.sub; SLbl.Font = Enum.Font.Code; SLbl.TextSize = 9
+    SLbl.TextColor3 = C.sub; SLbl.Font = Enum.Font.Gotham; SLbl.TextSize = 10
     SLbl.TextXAlignment = Enum.TextXAlignment.Left
     local OnlineCountLbl = Instance.new("TextLabel", StatusBar)
     OnlineCountLbl.Name = "OnlineCount"
@@ -285,7 +355,7 @@ function NexusLib:Window(cfg)
     OnlineCountLbl.AnchorPoint = Vector2.new(1,0.5)
     OnlineCountLbl.BackgroundTransparency = 1
     OnlineCountLbl.Text = "🟢 ..."
-    OnlineCountLbl.TextColor3 = Color3.fromRGB(0,200,100)
+    OnlineCountLbl.TextColor3 = C.green
     OnlineCountLbl.Font = Enum.Font.GothamBold
     OnlineCountLbl.TextSize = 9
     OnlineCountLbl.TextXAlignment = Enum.TextXAlignment.Right
@@ -300,16 +370,23 @@ function NexusLib:Window(cfg)
         for tname, td in pairs(tabs) do
             local on = (tname == name)
             if on then
-                td.btn.BackgroundColor3 = C.accent
-                td.btn.TextColor3 = Color3.fromRGB(255,255,255)
-                local bPos = td.btn.AbsolutePosition.X - TabBar.AbsolutePosition.X
-                local bW   = td.btn.AbsoluteSize.X
-                local barW = TabBar.AbsoluteSize.X
-                TabBar.CanvasPosition = Vector2.new(math.max(0, bPos-(barW/2-bW/2)), 0)
+                td.btn.BackgroundColor3 = C.accentBg
+                td.btn.BackgroundTransparency = 0
+                td.indicator.BackgroundTransparency = 0
+                td.iconLbl.TextColor3 = C.accent
+                td.nameLbl.TextColor3 = C.text
+                -- Scroll selected tab into view (vertical now).
+                local bPos = td.btn.AbsolutePosition.Y - TabBar.AbsolutePosition.Y
+                local bH   = td.btn.AbsoluteSize.Y
+                local barH = TabBar.AbsoluteSize.Y
+                if bPos < 0 or (bPos + bH) > barH then
+                    TabBar.CanvasPosition = Vector2.new(0, math.max(0, bPos - (barH/2 - bH/2)))
+                end
             else
-                td.btn.BackgroundColor3 = Color3.fromRGB(0,0,0)
-                td.btn.TextColor3 = C.sub
                 td.btn.BackgroundTransparency = 1
+                td.indicator.BackgroundTransparency = 1
+                td.iconLbl.TextColor3 = C.sub
+                td.nameLbl.TextColor3 = C.sub
             end
             td.page.Visible = on
         end
@@ -482,16 +559,64 @@ function NexusLib:Window(cfg)
     end
 
     function Win:Tab(icon, name)
+        -- Vertical tab button in the sidebar rail. Structure:
+        --   [ | ] [icon] [name............]
+        -- Indicator bar on the left shows active state via color.
         local btn = Instance.new("TextButton", TabBar)
-        btn.Text = icon.." "..name
-        btn.AutomaticSize = Enum.AutomaticSize.X
-        btn.Size = UDim2.new(0, 0, 0, 26)
-        btn.BackgroundTransparency = 1; btn.TextColor3 = C.sub
-        btn.Font = Enum.Font.GothamBold; btn.TextSize = 10; btn.BorderSizePixel = 0
-        Instance.new("UICorner",btn).CornerRadius = UDim.new(0,7)
-        local btnPad = Instance.new("UIPadding", btn)
-        btnPad.PaddingLeft = UDim.new(0, 8)
-        btnPad.PaddingRight = UDim.new(0, 8)
+        btn.Text = ""  -- We use child labels for icon + name instead.
+        btn.Size = UDim2.new(1, 0, 0, 34)
+        btn.BackgroundColor3 = C.accentBg
+        btn.BackgroundTransparency = 1  -- transparent until active
+        btn.BorderSizePixel = 0
+        btn.AutoButtonColor = false
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
+        -- Left active indicator (thin vertical bar).
+        local indicator = Instance.new("Frame", btn)
+        indicator.Size = UDim2.new(0, 3, 1, -14)
+        indicator.Position = UDim2.new(0, 0, 0, 7)
+        indicator.BackgroundColor3 = C.accent
+        indicator.BorderSizePixel = 0
+        indicator.BackgroundTransparency = 1  -- hidden until active
+        local indCorner = Instance.new("UICorner", indicator)
+        indCorner.CornerRadius = UDim.new(1, 0)
+
+        -- Icon glyph (emoji).
+        local iconLbl = Instance.new("TextLabel", btn)
+        iconLbl.Text = icon or ""
+        iconLbl.Size = UDim2.new(0, 22, 1, 0)
+        iconLbl.Position = UDim2.new(0, 10, 0, 0)
+        iconLbl.BackgroundTransparency = 1
+        iconLbl.TextColor3 = C.sub
+        iconLbl.Font = Enum.Font.GothamMedium
+        iconLbl.TextSize = 14
+        iconLbl.TextXAlignment = Enum.TextXAlignment.Center
+        iconLbl.TextYAlignment = Enum.TextYAlignment.Center
+
+        -- Name label.
+        local nameLbl = Instance.new("TextLabel", btn)
+        nameLbl.Text = name or ""
+        nameLbl.Size = UDim2.new(1, -42, 1, 0)
+        nameLbl.Position = UDim2.new(0, 36, 0, 0)
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.TextColor3 = C.sub
+        nameLbl.Font = Enum.Font.GothamMedium
+        nameLbl.TextSize = 12
+        nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        nameLbl.TextYAlignment = Enum.TextYAlignment.Center
+        nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+
+        -- Hover highlight for inactive tabs (active tabs own their bg).
+        btn.MouseEnter:Connect(function()
+            if activeTab ~= name then
+                btn.BackgroundTransparency = 0.85
+            end
+        end)
+        btn.MouseLeave:Connect(function()
+            if activeTab ~= name then
+                btn.BackgroundTransparency = 1
+            end
+        end)
 
         local page = Instance.new("ScrollingFrame", Content)
         page.Size = UDim2.new(1,0,1,0); page.BackgroundTransparency = 1
@@ -503,7 +628,7 @@ function NexusLib:Window(cfg)
         layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
         Instance.new("UIPadding",page).PaddingTop = UDim.new(0,8)
 
-        tabs[name] = { btn=btn, page=page, layout=layout }
+        tabs[name] = { btn=btn, page=page, layout=layout, indicator=indicator, iconLbl=iconLbl, nameLbl=nameLbl }
         btn.MouseButton1Click:Connect(function() switchTab(name) end)
         if not activeTab then switchTab(name) end
 
@@ -571,7 +696,7 @@ function NexusLib:Window(cfg)
                     TweenService:Create(Thumb,ti,{Position=UDim2.new(0,23,0.5,-9),BackgroundColor3=C.accent}):Play()
                     cs.Color = C.accentD
                     badge.Text = "ON"; badge.TextColor3 = C.accent
-                    badge.BackgroundColor3 = Color3.fromRGB(0,30,55)
+                    badge.BackgroundColor3 = C.accentBg
                 else
                     TweenService:Create(Pill, ti,{BackgroundColor3=C.border}):Play()
                     TweenService:Create(Thumb,ti,{Position=UDim2.new(0,3,0.5,-9),BackgroundColor3=C.sub}):Play()
@@ -586,7 +711,7 @@ function NexusLib:Window(cfg)
                 Pill.BackgroundColor3 = C.accentD; cs.Color = C.accentD
                 Thumb.Position = UDim2.new(0,23,0.5,-9); Thumb.BackgroundColor3 = C.accent
                 badge.Text = "ON"; badge.TextColor3 = C.accent
-                badge.BackgroundColor3 = Color3.fromRGB(0,30,55)
+                badge.BackgroundColor3 = C.accentBg
             else
                 Pill.BackgroundColor3 = C.border; cs.Color = C.border
                 Thumb.Position = UDim2.new(0,3,0.5,-9); Thumb.BackgroundColor3 = C.sub
@@ -732,7 +857,7 @@ function NexusLib:Window(cfg)
             dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
 
             Card.MouseButton1Click:Connect(function()
-                TweenService:Create(Card,TweenInfo.new(0.08),{BackgroundColor3=Color3.fromRGB(20,25,40)}):Play()
+                TweenService:Create(Card,TweenInfo.new(0.08),{BackgroundColor3=C.accentBg}):Play()
                 task.delay(0.15,function() TweenService:Create(Card,TweenInfo.new(0.15),{BackgroundColor3=C.card}):Play() end)
                 if cb then cb() end
             end)
@@ -882,7 +1007,7 @@ function NexusLib:Window(cfg)
                 for i, item in ipairs(list) do
                     local btn = Instance.new("TextButton", listScroll)
                     local isActive = isMulti and selected[i] or (i == curIdx)
-                    btn.Size = UDim2.new(1,-4,0,24); btn.LayoutOrder = i; btn.BackgroundColor3 = isActive and Color3.fromRGB(0,40,80) or C.panel
+                    btn.Size = UDim2.new(1,-4,0,24); btn.LayoutOrder = i; btn.BackgroundColor3 = isActive and C.accentBg or C.panel
                     btn.BorderSizePixel = 0; btn.Text = ""; btn.Font = Enum.Font.GothamBold; btn.TextSize = 10
                     Instance.new("UICorner", btn).CornerRadius = UDim.new(0,4)
                     local lbl = Instance.new("TextLabel", btn)
