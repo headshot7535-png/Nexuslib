@@ -413,29 +413,7 @@ function NexusLib:Window(cfg)
 
     local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab, _conns=_conns, _track=track }
 
-    -- Prefer instant update on the main thread; if Instance access fails (executor worker / Plugin
-    -- capability), defer once past Heartbeat — same pattern for Status, Notify, presence label.
-    local function runSafeOnPlayerGui(fn)
-        if pcall(fn) then
-            return
-        end
-        task.defer(function()
-            pcall(function()
-                RunService.Heartbeat:Wait()
-            end)
-            pcall(fn)
-        end)
-    end
-
-    function Win:Status(msg)
-        msg = tostring(msg or "")
-        local lbl = SLbl
-        runSafeOnPlayerGui(function()
-            if lbl and lbl.Parent then
-                lbl.Text = msg
-            end
-        end)
-    end
+    function Win:Status(msg) SLbl.Text = msg end
 
     function Win:Notify(title, text, duration, notifType)
         title = title or "Notification"
@@ -447,61 +425,57 @@ function NexusLib:Window(cfg)
         elseif notifType == "warning" then accent = C.orange
         elseif notifType == "error" then accent = C.red
         end
-        local winSelf = self
-        runSafeOnPlayerGui(function()
-            local container = winSelf._screen and winSelf._screen:FindFirstChild("NotifyContainer")
-            if not container then
-                return
-            end
-            local toast = Instance.new("Frame", container)
-            toast.Size = UDim2.new(0, 260, 0, 0)
-            toast.AutomaticSize = Enum.AutomaticSize.Y
-            toast.BackgroundColor3 = C.card
-            toast.BorderSizePixel = 0
-            toast.LayoutOrder = math.floor(999999 - os.clock())
-            Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 10)
-            local stroke = Instance.new("UIStroke", toast)
-            stroke.Color = accent
-            stroke.Thickness = 1.5
-            local pad = Instance.new("UIPadding", toast)
-            pad.PaddingLeft = UDim.new(0, 12)
-            pad.PaddingRight = UDim.new(0, 12)
-            pad.PaddingTop = UDim.new(0, 10)
-            pad.PaddingBottom = UDim.new(0, 10)
-            local layout = Instance.new("UIListLayout", toast)
-            layout.Padding = UDim.new(0, 4)
-            layout.SortOrder = Enum.SortOrder.LayoutOrder
-            local tTitle = Instance.new("TextLabel", toast)
-            tTitle.Text = title
-            tTitle.Size = UDim2.new(1, 0, 0, 16)
-            tTitle.BackgroundTransparency = 1
-            tTitle.TextColor3 = accent
-            tTitle.Font = Enum.Font.GothamBold
-            tTitle.TextSize = 12
-            tTitle.TextXAlignment = Enum.TextXAlignment.Left
-            tTitle.TextWrapped = true
-            tTitle.LayoutOrder = 1
-            local tText = Instance.new("TextLabel", toast)
-            tText.Text = text
-            tText.Size = UDim2.new(1, 0, 0, 0)
-            tText.AutomaticSize = Enum.AutomaticSize.Y
-            tText.BackgroundTransparency = 1
-            tText.TextColor3 = C.text
-            tText.Font = Enum.Font.Gotham
-            tText.TextSize = 10
-            tText.TextXAlignment = Enum.TextXAlignment.Left
-            tText.TextWrapped = true
-            tText.LayoutOrder = 2
-            task.delay(duration, function()
-                if toast and toast.Parent then
-                    TweenService:Create(toast, TweenInfo.new(0.25), { BackgroundTransparency = 1 }):Play()
-                    for _, c in ipairs(toast:GetDescendants()) do
-                        if c:IsA("TextLabel") then pcall(function() c.TextTransparency = 1 end) end
-                    end
-                    task.delay(0.3, function() pcall(function() toast:Destroy() end) end)
+        local container = self._screen and self._screen:FindFirstChild("NotifyContainer")
+        if not container then return end
+        local toast = Instance.new("Frame", container)
+        toast.Size = UDim2.new(0, 260, 0, 0)
+        toast.AutomaticSize = Enum.AutomaticSize.Y
+        toast.BackgroundColor3 = C.card
+        toast.BorderSizePixel = 0
+        toast.LayoutOrder = math.floor(999999 - os.clock())
+        Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 10)
+        local stroke = Instance.new("UIStroke", toast)
+        stroke.Color = accent
+        stroke.Thickness = 1.5
+        local pad = Instance.new("UIPadding", toast)
+        pad.PaddingLeft = UDim.new(0, 12)
+        pad.PaddingRight = UDim.new(0, 12)
+        pad.PaddingTop = UDim.new(0, 10)
+        pad.PaddingBottom = UDim.new(0, 10)
+        local layout = Instance.new("UIListLayout", toast)
+        layout.Padding = UDim.new(0, 4)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        local tTitle = Instance.new("TextLabel", toast)
+        tTitle.Text = title
+        tTitle.Size = UDim2.new(1, 0, 0, 16)
+        tTitle.BackgroundTransparency = 1
+        tTitle.TextColor3 = accent
+        tTitle.Font = Enum.Font.GothamBold
+        tTitle.TextSize = 12
+        tTitle.TextXAlignment = Enum.TextXAlignment.Left
+        tTitle.TextWrapped = true
+        tTitle.LayoutOrder = 1
+        local tText = Instance.new("TextLabel", toast)
+        tText.Text = text
+        tText.Size = UDim2.new(1, 0, 0, 0)
+        tText.AutomaticSize = Enum.AutomaticSize.Y
+        tText.BackgroundTransparency = 1
+        tText.TextColor3 = C.text
+        tText.Font = Enum.Font.Gotham
+        tText.TextSize = 10
+        tText.TextXAlignment = Enum.TextXAlignment.Left
+        tText.TextWrapped = true
+        tText.LayoutOrder = 2
+        task.delay(duration, function()
+            if toast and toast.Parent then
+                TweenService:Create(toast, TweenInfo.new(0.25), { BackgroundTransparency = 1 }):Play()
+                for _, c in ipairs(toast:GetDescendants()) do
+                    if c:IsA("TextLabel") then pcall(function() c.TextTransparency = 1 end) end
                 end
-            end)
+                task.delay(0.3, function() pcall(function() toast:Destroy() end) end)
+            end
         end)
+        return toast
     end
 
     function Win:Destroy()
@@ -560,15 +534,7 @@ function NexusLib:Window(cfg)
         task.spawn(function()
             upsert()
             local count = countOnline()
-            local function setOnlineLbl(n)
-                local s = "🟢 " .. tostring(n) .. " online"
-                runSafeOnPlayerGui(function()
-                    if OnlineCountLbl and OnlineCountLbl.Parent then
-                        OnlineCountLbl.Text = s
-                    end
-                end)
-            end
-            setOnlineLbl(count)
+            OnlineCountLbl.Text = "🟢 "..count.." online"
             while true do
                 if _G.NexusLib_PresenceGen ~= myGen then
                     pcall(httpRequest, {
@@ -582,7 +548,7 @@ function NexusLib:Window(cfg)
                 task.wait(pollSec)
                 upsert()
                 count = countOnline()
-                setOnlineLbl(count)
+                OnlineCountLbl.Text = "🟢 "..count.." online"
             end
         end)
     end
@@ -1716,7 +1682,7 @@ function NexusLib:Window(cfg)
             end
             -- Re-arm IJ after spawn: Humanoid just appeared; JumpRequest re-hook matches manual re-toggle.
             refreshInfiniteJumpIfEnabled()
-        end)
+        end))
 
         T:Section("Utility")
 
