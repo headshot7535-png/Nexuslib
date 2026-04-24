@@ -1,5 +1,5 @@
 -- ============================================================
---  NexusLib v1.3  |  GUI Library (Rayfield-style + ListTab + Notify)
+--  NexusLib v1.5  |  GUI Library (Rayfield-style + ListTab + Notify)
 --  Usage:
 --    local Lib = loadstring(game:HttpGet("URL"))()
 --    local Win  = Lib:Window({ title="My GUI" })
