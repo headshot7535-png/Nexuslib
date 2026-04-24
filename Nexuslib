@@ -144,8 +144,16 @@ function NexusLib:Window(cfg)
     -- main-thread Heartbeat callbacks always have Plugin capability because
     -- the UI was created there. setthreadidentity is intentionally NOT used.
     local _pendingWrites = {}
+    local _pendingJobs = {}
+
     local function queueWrite(instance, prop, value)
         _pendingWrites[#_pendingWrites + 1] = { i = instance, p = prop, v = value }
+    end
+
+    local function queueUiJob(fn)
+        if type(fn) == "function" then
+            _pendingJobs[#_pendingJobs + 1] = fn
+        end
     end
     -- Default dimensions: landscape, ~1.4:1 aspect. Roomy enough for a side
     -- tab rail + wide single-column content. Caller can still override.
@@ -185,6 +193,14 @@ function NexusLib:Window(cfg)
     -- applies them safely every frame. The table is cleared in-place to
     -- avoid GC churn on a hot path.
     track(game:GetService("RunService").Heartbeat:Connect(function()
+        if #_pendingJobs > 0 then
+            local jobs = _pendingJobs
+            _pendingJobs = {}
+            for i = 1, #jobs do
+                pcall(jobs[i])
+            end
+        end
+
         if #_pendingWrites == 0 then return end
         local batch = _pendingWrites
         _pendingWrites = {}
@@ -1324,6 +1340,66 @@ function NexusLib:Window(cfg)
 
         -- MultiSelect: options = { "A", "B" } or { {text="A", value=1}, ... }, defaultIndices = { 1, 3 }, cb(selectedIndices, selectedValues)
         function T:MultiSelect(label, desc, options, defaultIndices, cb)
+            local function canCreateInstancesHere()
+                local ok = pcall(function()
+                    local f = Instance.new("Folder")
+                    f:Destroy()
+                end)
+                return ok
+            end
+
+            if not canCreateInstancesHere() then
+                local proxy = { _real = nil, _pendingSet = nil }
+
+                function proxy:Set(indices)
+                    self._pendingSet = indices or {}
+                    if self._real and self._real.Set then
+                        self._real:Set(indices or {})
+                    end
+                end
+
+                function proxy:Get()
+                    if self._real and self._real.Get then
+                        return self._real:Get()
+                    end
+
+                    local idxs, vals = {}, {}
+                    local opts = options or {}
+                    for _, idx in ipairs(defaultIndices or {}) do
+                        if opts[idx] ~= nil then
+                            idxs[#idxs + 1] = idx
+                            local opt = opts[idx]
+                            if type(opt) == "table" then
+                                vals[#vals + 1] = opt.value ~= nil and opt.value or opt.Value ~= nil and opt.Value or opt[2] or opt[1]
+                            else
+                                vals[#vals + 1] = opt
+                            end
+                        end
+                    end
+                    return idxs, vals
+                end
+
+                function proxy:Refresh(newOptions, newDefaults)
+                    options = newOptions or options
+                    defaultIndices = newDefaults or defaultIndices or {}
+                    if self._real and self._real.Refresh then
+                        self._real:Refresh(options, defaultIndices)
+                    else
+                        self._pendingSet = defaultIndices
+                    end
+                end
+
+                queueUiJob(function()
+                    local real = T:MultiSelect(label, desc, options, defaultIndices, cb)
+                    proxy._real = real
+                    if proxy._pendingSet and real and real.Set then
+                        real:Set(proxy._pendingSet)
+                    end
+                end)
+
+                return proxy
+            end
+
             order = order + 1
             local opts = options or {}
             local list = {}
@@ -1378,7 +1454,13 @@ function NexusLib:Window(cfg)
                 return t
             end
             local function fireCb()
-                if cb then cb(getIndices(), getValues()) end
+                if cb then
+                    local idxs = getIndices()
+                    local vals = getValues()
+                    task.defer(function()
+                        pcall(cb, idxs, vals)
+                    end)
+                end
             end
             local function rebuildList()
                 for _, c in ipairs(listScroll:GetChildren()) do if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end end
@@ -1418,7 +1500,23 @@ function NexusLib:Window(cfg)
                     for _, idx in ipairs(indices or {}) do if idx >= 1 and idx <= #list then selected[idx] = true end end
                     rebuildList()
                 end,
-                Get = function() return getIndices(), getValues() end
+                Get = function() return getIndices(), getValues() end,
+                Refresh = function(newOptions, newDefaultIndices)
+                    opts = newOptions or {}
+                    list = {}
+                    for i, v in ipairs(opts) do
+                        if type(v) == "table" then
+                            list[i] = { text = v.text or v.Text or v[1], value = v.value ~= nil and v.value or v.Value ~= nil and v.Value or v[2] or v }
+                        else
+                            list[i] = { text = tostring(v), value = v }
+                        end
+                    end
+                    selected = {}
+                    for _, idx in ipairs(newDefaultIndices or {}) do
+                        if idx >= 1 and idx <= #list then selected[idx] = true end
+                    end
+                    rebuildList()
+                end
             }
         end
 
