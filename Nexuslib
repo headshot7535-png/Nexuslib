@@ -1243,6 +1243,47 @@ function NexusLib:Window(cfg)
 
         -- Input: single-line text, cb(text) on FocusLost (enter or click away)
         function T:Input(label, desc, placeholder, defaultText, cb)
+            local function canCreateInstancesHere()
+                local ok = pcall(function()
+                    local f = Instance.new("Folder")
+                    f:Destroy()
+                end)
+                return ok
+            end
+
+            if not canCreateInstancesHere() then
+                local currentText = tostring(defaultText or "")
+                local proxy = { _real = nil }
+
+                function proxy:Set(s)
+                    currentText = tostring(s or "")
+                    if self._real and self._real.Set then
+                        self._real:Set(currentText)
+                    end
+                end
+
+                function proxy:Get()
+                    if self._real and self._real.Get then
+                        return self._real:Get()
+                    end
+                    return currentText
+                end
+
+                queueUiJob(function()
+                    local real = T:Input(label, desc, placeholder, currentText, function(text)
+                        currentText = tostring(text or "")
+                        if cb then
+                            task.defer(function()
+                                pcall(cb, currentText)
+                            end)
+                        end
+                    end)
+                    proxy._real = real
+                end)
+
+                return proxy
+            end
+
             order = order + 1
             local Card = Instance.new("Frame", page)
             Card.Size = UDim2.new(1,-10,0,52); Card.BackgroundColor3 = C.card; Card.BorderSizePixel = 0; Card.LayoutOrder = order
@@ -1260,8 +1301,25 @@ function NexusLib:Window(cfg)
             box.PlaceholderText = placeholder or ""; box.Text = defaultText or ""; box.Font = Enum.Font.Gotham; box.TextSize = 10; box.ClearTextOnFocus = false
             Instance.new("UICorner", box).CornerRadius = UDim.new(0,4)
             Instance.new("UIPadding", box).PaddingLeft = UDim.new(0,6)
-            box.FocusLost:Connect(function() if cb then cb(box.Text) end end)
-            return { Set = function(s) box.Text = tostring(s) end, Get = function() return box.Text end }
+            box.FocusLost:Connect(function()
+                if cb then
+                    local text = box.Text
+                    task.defer(function()
+                        pcall(cb, text)
+                    end)
+                end
+            end)
+            return {
+                Set = function(s)
+                    queueWrite(box, "Text", tostring(s or ""))
+                end,
+                Get = function()
+                    local ok, text = pcall(function()
+                        return box.Text
+                    end)
+                    return ok and text or tostring(defaultText or "")
+                end
+            }
         end
 
         -- ColorPicker: defaultColor = Color3, cb(color) when changed
