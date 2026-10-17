@@ -1,4 +1,5 @@
 -- ============================================================
+-- to use local NEXUSLIB_URL = "https://raw.githubusercontent.com/headshot7535-png/Nexuslib/main/Nexuslib" in the script
 --  NexusLib v1.5.  |  GUI Library (Rayfield-style + ListTab + Notify)
 --  Usage:
 --    local Lib = loadstring(game:HttpGet("URL"))()
