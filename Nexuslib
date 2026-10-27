@@ -1,5 +1,5 @@
 -- ============================================================
---  NexusLib v1.6  |  GUI Library (Rayfield-style + ListTab + Notify)
+--  NexusLib v1.7  |  GUI Library (Rayfield-style + ListTab + Notify)
 --  Usage:
 -- -- to use local NEXUSLIB_URL = "https://raw.githubusercontent.com/headshot7535-png/Nexuslib/main/Nexuslib" in the script
 --    local Lib = loadstring(game:HttpGet("URL"))()
@@ -19,11 +19,18 @@
 --    Win:Notify("Done", "Settings saved!", 3, "success")
 --    Win:Destroy()   -- tear down GUI
 --    Win:ChatTab()   Win:ListTab({ ... })   Win:PlayerTab({ saved = {...}, onPersist = function() end })
+--  v1.7 live-status widgets:
+--    local now = Tab:StatusCard({ icon="⚔️", title="Farming", text="why", sub="detail" })
+--    now:Set({ title="...", text="...", sub="...", tag="♥ 10", tagColor=Lib.Colors.green, progress=0.4 })
+--    local tiles = Tab:StatGrid({ "Gems", "Crystals" }, 3)   tiles:Set("Gems", "10.2k", "spendable", nil, 0.5)
+--    local list = Tab:KeyValue({ "Mode", "Battle" })          list:Set("Battle", "wave 4/12", Lib.Colors.green)
+--    list:Set("Mode", "value", nil, "New label")             -- 4th arg renames the row; label "" + no value hides it
+--    Win:Status("Farming", Lib.Colors.green)   -- the status-bar dot takes the colour
 -- ============================================================
 
 local NexusLib = {}
 NexusLib.__index = NexusLib
-NexusLib.Version = "1.6.0"
+NexusLib.Version = "1.7.0"
 
 local function finiteNumber(value, fallback)
     local n = tonumber(value)
@@ -142,6 +149,8 @@ local C = {
     -- Deeper than panel but still well under the accent so text stays readable.
     accentBg = Color3.fromRGB(35, 40, 70),
 }
+-- v1.7: scripts can colour their own status text with the same palette (Lib.Colors.green ...)
+NexusLib.Colors = C
 
 -- ── Built-in feature state ────────────────────────────────────
 local _featureRunGen = 0
@@ -357,16 +366,34 @@ function NexusLib:Window(cfg)
     TitleBar.Size = UDim2.new(1, 0, 0, 56)
     TitleBar.BackgroundTransparency = 1
 
+    -- v1.7: the close button sits on Main, not here, so the title gets the sidebar's full width; it wraps
+    -- (two lines) instead of being cut off, and cfg.subtitle adds a small second line
+    local subtitle = cfg.subtitle and tostring(cfg.subtitle) or nil
     local TitleLbl = Instance.new("TextLabel", TitleBar)
     TitleLbl.Text = title
-    TitleLbl.Size = UDim2.new(1, -50, 1, 0)
-    TitleLbl.Position = UDim2.new(0, 16, 0, 0)
+    TitleLbl.Size = UDim2.new(1, -24, subtitle and 0.62 or 1, 0)
+    TitleLbl.Position = UDim2.new(0, 14, 0, subtitle and 4 or 0)
     TitleLbl.BackgroundTransparency = 1
     TitleLbl.TextColor3 = C.text
     TitleLbl.Font = Enum.Font.GothamBold
-    TitleLbl.TextSize = 15
+    TitleLbl.TextSize = 14
+    TitleLbl.TextWrapped = true
+    TitleLbl.TextTruncate = Enum.TextTruncate.AtEnd
     TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
-    TitleLbl.TextYAlignment = Enum.TextYAlignment.Center
+    TitleLbl.TextYAlignment = subtitle and Enum.TextYAlignment.Bottom or Enum.TextYAlignment.Center
+    if subtitle then
+        local SubLbl = Instance.new("TextLabel", TitleBar)
+        SubLbl.Text = subtitle
+        SubLbl.Size = UDim2.new(1, -24, 0.38, -4)
+        SubLbl.Position = UDim2.new(0, 14, 0.62, 4)
+        SubLbl.BackgroundTransparency = 1
+        SubLbl.TextColor3 = C.accent
+        SubLbl.Font = Enum.Font.GothamMedium
+        SubLbl.TextSize = 10
+        SubLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        SubLbl.TextXAlignment = Enum.TextXAlignment.Left
+        SubLbl.TextYAlignment = Enum.TextYAlignment.Top
+    end
 
     -- Close button sits top-right of the whole window (not sidebar).
     local CloseBtn = Instance.new("TextButton", Main)
@@ -515,7 +542,10 @@ function NexusLib:Window(cfg)
 
     local Win = { _screen=Screen, _main=Main, _status=SLbl, _tabs=tabs, _switch=switchTab, _conns=_conns, _track=track }
 
-    function Win:Status(msg) queueWrite(SLbl, "Text", tostring(msg or "")) end
+    function Win:Status(msg, color)
+        queueWrite(SLbl, "Text", tostring(msg or ""))
+        if typeof(color) == "Color3" then queueWrite(SDot, "BackgroundColor3", color) end
+    end
     function Win:IsDestroyed() return not alive end
     function Win:SetVisible(visible) if alive then Main.Visible = visible == true end end
     function Win:Show() self:SetVisible(true) end
@@ -822,7 +852,7 @@ function NexusLib:Window(cfg)
             local dL = Instance.new("TextLabel",Card)
             dL.Text = desc or ""; dL.Size = UDim2.new(1,-120,0,14); dL.Position = UDim2.new(0,14,0,28)
             dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub
-            dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+            dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextTruncate = Enum.TextTruncate.AtEnd
 
             local badge = Instance.new("TextLabel",Card)
             badge.Size = UDim2.new(0,34,0,17); badge.Position = UDim2.new(1,-88,0.5,-8)
@@ -934,7 +964,7 @@ function NexusLib:Window(cfg)
             local dL = Instance.new("TextLabel",Card)
             dL.Text = desc or ""; dL.Size = UDim2.new(1,-80,0,12); dL.Position = UDim2.new(0,14,0,26)
             dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub
-            dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+            dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextTruncate = Enum.TextTruncate.AtEnd
 
             local Track = Instance.new("Frame",Card)
             Track.Size = UDim2.new(1,-28,0,6); Track.Position = UDim2.new(0,14,0,44)
@@ -1032,7 +1062,7 @@ function NexusLib:Window(cfg)
             local dL = Instance.new("TextLabel",Card)
             dL.Text = desc or ""; dL.Size = UDim2.new(1,-50,0,13); dL.Position = UDim2.new(0,46,0,24)
             dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub
-            dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+            dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextTruncate = Enum.TextTruncate.AtEnd
 
             Card.Activated:Connect(function()
                 TweenService:Create(Card,TweenInfo.new(0.08),{BackgroundColor3=C.accentBg}):Play()
@@ -1044,13 +1074,15 @@ function NexusLib:Window(cfg)
 
         function T:Label(txt)
             order = order + 1
+            -- v1.7: grows with its text (long status lines wrapped onto a 28px row and got cut off)
             local f = Instance.new("Frame", page)
-            f.Size = UDim2.new(1,-10,0,28); f.BackgroundTransparency = 1; f.LayoutOrder = order
+            f.Size = UDim2.new(1,-10,0,0); f.AutomaticSize = Enum.AutomaticSize.Y; f.BackgroundTransparency = 1; f.LayoutOrder = order
+            local fp = Instance.new("UIPadding", f); fp.PaddingTop = UDim.new(0,6); fp.PaddingBottom = UDim.new(0,6)
             local l = Instance.new("TextLabel", f)
-            l.Size = UDim2.new(1,0,1,0); l.BackgroundTransparency = 1
+            l.Size = UDim2.new(1,0,0,0); l.AutomaticSize = Enum.AutomaticSize.Y; l.BackgroundTransparency = 1
             l.TextColor3 = C.sub; l.Font = Enum.Font.Gotham; l.TextSize = 10
             l.TextXAlignment = Enum.TextXAlignment.Left; l.TextWrapped = true
-            l.Text = txt
+            l.Text = tostring(txt or "")
             -- Queue the write so it executes on the main-thread Heartbeat
             -- drainer below, which always has Plugin capability regardless
             -- of which thread the caller runs on.
@@ -1114,7 +1146,7 @@ function NexusLib:Window(cfg)
             nL.BackgroundTransparency = 1; nL.TextColor3 = C.text; nL.Font = Enum.Font.GothamBold; nL.TextSize = 12; nL.TextXAlignment = Enum.TextXAlignment.Left
             local dL = Instance.new("TextLabel", Card)
             dL.Text = desc or ""; dL.Size = UDim2.new(1,-80,0,12); dL.Position = UDim2.new(0,14,0,28)
-            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextTruncate = Enum.TextTruncate.AtEnd
 
             local dropBtn = Instance.new("TextButton", Card)
             dropBtn.Size = UDim2.new(0,100,0,24); dropBtn.Position = UDim2.new(1,-106,0.5,-12)
@@ -1327,7 +1359,7 @@ function NexusLib:Window(cfg)
             nL.BackgroundTransparency = 1; nL.TextColor3 = C.text; nL.Font = Enum.Font.GothamBold; nL.TextSize = 12; nL.TextXAlignment = Enum.TextXAlignment.Left
             local dL = Instance.new("TextLabel", Card)
             dL.Text = desc or ""; dL.Size = UDim2.new(1,-100,0,12); dL.Position = UDim2.new(0,14,0,26)
-            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextTruncate = Enum.TextTruncate.AtEnd
             local keyBtn = Instance.new("TextButton", Card)
             keyBtn.Size = UDim2.new(0,80,0,22); keyBtn.Position = UDim2.new(1,-86,0.5,-11)
             keyBtn.BackgroundColor3 = C.panel; keyBtn.BorderSizePixel = 0; keyBtn.Text = keyCodeToName(currentKey)
@@ -1423,7 +1455,7 @@ function NexusLib:Window(cfg)
             nL.BackgroundTransparency = 1; nL.TextColor3 = C.text; nL.Font = Enum.Font.GothamBold; nL.TextSize = 12; nL.TextXAlignment = Enum.TextXAlignment.Left
             local dL = Instance.new("TextLabel", Card)
             dL.Text = desc or ""; dL.Size = UDim2.new(1,-20,0,10); dL.Position = UDim2.new(0,14,0,24)
-            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextTruncate = Enum.TextTruncate.AtEnd
             local box = Instance.new("TextBox", Card)
             box.Size = UDim2.new(1,-28,0,20); box.Position = UDim2.new(0,14,0,36)
             box.BackgroundColor3 = C.panel; box.BorderSizePixel = 0; box.TextColor3 = C.text; box.PlaceholderColor3 = C.sub
@@ -1465,7 +1497,7 @@ function NexusLib:Window(cfg)
             nL.BackgroundTransparency = 1; nL.TextColor3 = C.text; nL.Font = Enum.Font.GothamBold; nL.TextSize = 12; nL.TextXAlignment = Enum.TextXAlignment.Left
             local dL = Instance.new("TextLabel", Card)
             dL.Text = desc or ""; dL.Size = UDim2.new(1,-70,0,12); dL.Position = UDim2.new(0,14,0,26)
-            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left
+            dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextTruncate = Enum.TextTruncate.AtEnd
             local colorBtn = Instance.new("TextButton", Card)
             colorBtn.Size = UDim2.new(0,36,0,28); colorBtn.Position = UDim2.new(1,-44,0.5,-14)
             colorBtn.BackgroundColor3 = current; colorBtn.BorderSizePixel = 0; colorBtn.Text = ""
@@ -1523,6 +1555,190 @@ function NexusLib:Window(cfg)
             l.BackgroundTransparency = 1; l.TextColor3 = C.sub; l.Font = Enum.Font.Gotham; l.TextSize = 10
             l.TextXAlignment = Enum.TextXAlignment.Left; l.TextWrapped = true; l.Text = txt or ""
             return { Set = function(s) queueWrite(l, "Text", tostring(s)) end }
+        end
+
+        -- ── v1.7 live-status widgets ─────────────────────────
+        -- Every Set goes through queueWrite, so they can be updated from any thread every frame.
+        local function txtLabel(parent, size, font, color, wrap)
+            local l = Instance.new("TextLabel", parent)
+            l.BackgroundTransparency = 1; l.BorderSizePixel = 0
+            l.Font = font; l.TextSize = size; l.TextColor3 = color
+            l.TextXAlignment = Enum.TextXAlignment.Left; l.TextYAlignment = Enum.TextYAlignment.Top
+            l.TextWrapped = wrap == true; l.Text = ""
+            l.Size = UDim2.new(1,0,0,0); l.AutomaticSize = Enum.AutomaticSize.Y
+            return l
+        end
+        local function pill(parent)
+            local p = Instance.new("TextLabel", parent)
+            p.BackgroundColor3 = C.accentBg; p.BorderSizePixel = 0
+            p.Font = Enum.Font.GothamBold; p.TextSize = 10; p.TextColor3 = C.accent
+            p.Size = UDim2.new(0,0,0,18); p.AutomaticSize = Enum.AutomaticSize.X; p.Text = ""; p.Visible = false
+            Instance.new("UICorner", p).CornerRadius = UDim.new(1,0)
+            local pp = Instance.new("UIPadding", p); pp.PaddingLeft = UDim.new(0,8); pp.PaddingRight = UDim.new(0,8)
+            return p
+        end
+        local function bar(parent, height)
+            local track = Instance.new("Frame", parent)
+            track.Size = UDim2.new(1,0,0,height); track.BackgroundColor3 = C.panel; track.BorderSizePixel = 0; track.Visible = false
+            Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+            local fill = Instance.new("Frame", track)
+            fill.Size = UDim2.new(0,0,1,0); fill.BackgroundColor3 = C.accent; fill.BorderSizePixel = 0
+            Instance.new("UICorner", fill).CornerRadius = UDim.new(1,0)
+            return track, fill
+        end
+        local function setBar(track, fill, p, color)
+            if p == nil then queueWrite(track, "Visible", false) return end
+            queueWrite(track, "Visible", true)
+            queueWrite(fill, "Size", UDim2.new(math.clamp(tonumber(p) or 0, 0, 1), 0, 1, 0))
+            if typeof(color) == "Color3" then queueWrite(fill, "BackgroundColor3", color) end
+        end
+
+        -- StatusCard: what's happening now. icon · bold title + coloured tag · wrapped text · small sub line · progress bar
+        -- card:Set({ icon, title, text, sub, tag, tagColor, progress (0..1 or false), color (accent stripe + bar) })
+        function T:StatusCard(opts)
+            opts = type(opts) == "table" and opts or { title = tostring(opts or "") }
+            order = order + 1
+            local Card = Instance.new("Frame", page)
+            Card.Size = UDim2.new(1,-10,0,0); Card.AutomaticSize = Enum.AutomaticSize.Y
+            Card.BackgroundColor3 = C.card; Card.BorderSizePixel = 0; Card.LayoutOrder = order
+            Instance.new("UICorner", Card).CornerRadius = UDim.new(0,10)
+            local cs = Instance.new("UIStroke", Card); cs.Color = C.border; cs.Thickness = 1
+            local stripe = Instance.new("Frame", Card)
+            stripe.Size = UDim2.new(0,3,1,-16); stripe.Position = UDim2.new(0,0,0,8)
+            stripe.BackgroundColor3 = C.accent; stripe.BorderSizePixel = 0
+            Instance.new("UICorner", stripe).CornerRadius = UDim.new(1,0)
+            local iconL = Instance.new("TextLabel", Card)
+            iconL.Size = UDim2.new(0,34,0,34); iconL.Position = UDim2.new(0,12,0,10)
+            iconL.BackgroundColor3 = C.panel; iconL.BorderSizePixel = 0
+            iconL.Font = Enum.Font.GothamBold; iconL.TextSize = 18; iconL.TextColor3 = C.text; iconL.Text = ""
+            Instance.new("UICorner", iconL).CornerRadius = UDim.new(0,8)
+            local body = Instance.new("Frame", Card)
+            body.Size = UDim2.new(1,-70,0,0); body.Position = UDim2.new(0,56,0,0); body.AutomaticSize = Enum.AutomaticSize.Y
+            body.BackgroundTransparency = 1
+            local bp = Instance.new("UIPadding", body); bp.PaddingTop = UDim.new(0,10); bp.PaddingBottom = UDim.new(0,12)
+            local bl = Instance.new("UIListLayout", body); bl.Padding = UDim.new(0,4); bl.SortOrder = Enum.SortOrder.LayoutOrder
+            local head = Instance.new("Frame", body)
+            head.Size = UDim2.new(1,0,0,18); head.BackgroundTransparency = 1; head.LayoutOrder = 1
+            local titleL = Instance.new("TextLabel", head)
+            titleL.Size = UDim2.new(1,-110,1,0); titleL.BackgroundTransparency = 1
+            titleL.Font = Enum.Font.GothamBold; titleL.TextSize = 13; titleL.TextColor3 = C.text
+            titleL.TextXAlignment = Enum.TextXAlignment.Left; titleL.TextTruncate = Enum.TextTruncate.AtEnd; titleL.Text = ""
+            local tagL = pill(head); tagL.AnchorPoint = Vector2.new(1,0); tagL.Position = UDim2.new(1,0,0,0)
+            local textL = txtLabel(body, 11, Enum.Font.GothamMedium, C.text, true); textL.LayoutOrder = 2
+            local subL = txtLabel(body, 10, Enum.Font.Gotham, C.sub, true); subL.LayoutOrder = 3
+            local track, fill = bar(body, 6); track.LayoutOrder = 4
+            local card = {}
+            function card:Set(o)
+                if type(o) ~= "table" then return end
+                if o.icon ~= nil then queueWrite(iconL, "Text", tostring(o.icon)) end
+                if o.title ~= nil then queueWrite(titleL, "Text", tostring(o.title)) end
+                if o.text ~= nil then queueWrite(textL, "Text", tostring(o.text)); queueWrite(textL, "Visible", tostring(o.text) ~= "") end
+                if o.sub ~= nil then queueWrite(subL, "Text", tostring(o.sub)); queueWrite(subL, "Visible", tostring(o.sub) ~= "") end
+                if o.tag ~= nil then
+                    queueWrite(tagL, "Text", tostring(o.tag)); queueWrite(tagL, "Visible", tostring(o.tag) ~= "")
+                    if typeof(o.tagColor) == "Color3" then queueWrite(tagL, "TextColor3", o.tagColor) end
+                end
+                if typeof(o.color) == "Color3" then queueWrite(stripe, "BackgroundColor3", o.color) end
+                if o.progress ~= nil then setBar(track, fill, o.progress ~= false and o.progress or nil, o.color) end
+            end
+            card.Set(card, opts)
+            -- also callable as card.Set(o) like the other widgets
+            local set = card.Set
+            card.Set = function(a, b) if a == card then set(card, b) else set(card, a) end end
+            return card
+        end
+
+        -- StatGrid: a grid of small tiles (label · big value · sub line · optional bar). grid:Set(key, value, sub, color, progress)
+        function T:StatGrid(keys, columns)
+            columns = math.max(1, math.floor(tonumber(columns) or 3))
+            order = order + 1
+            local f = Instance.new("Frame", page)
+            f.Size = UDim2.new(1,-10,0,0); f.AutomaticSize = Enum.AutomaticSize.Y
+            f.BackgroundTransparency = 1; f.LayoutOrder = order
+            local g = Instance.new("UIGridLayout", f)
+            g.CellPadding = UDim2.new(0,6,0,6); g.SortOrder = Enum.SortOrder.LayoutOrder
+            g.CellSize = UDim2.new(1/columns, -6 * (columns - 1) / columns, 0, 62)
+            local tiles = {}
+            for i, key in ipairs(type(keys) == "table" and keys or {}) do
+                local t = Instance.new("Frame", f)
+                t.BackgroundColor3 = C.card; t.BorderSizePixel = 0; t.LayoutOrder = i
+                Instance.new("UICorner", t).CornerRadius = UDim.new(0,8)
+                local ts = Instance.new("UIStroke", t); ts.Color = C.border; ts.Thickness = 1
+                local tp = Instance.new("UIPadding", t)
+                tp.PaddingLeft = UDim.new(0,10); tp.PaddingRight = UDim.new(0,10); tp.PaddingTop = UDim.new(0,7)
+                local k = Instance.new("TextLabel", t)
+                k.Size = UDim2.new(1,0,0,12); k.BackgroundTransparency = 1; k.Font = Enum.Font.GothamBold; k.TextSize = 9
+                k.TextColor3 = C.sub; k.TextXAlignment = Enum.TextXAlignment.Left; k.Text = tostring(key):upper()
+                k.TextTruncate = Enum.TextTruncate.AtEnd
+                local v = Instance.new("TextLabel", t)
+                v.Size = UDim2.new(1,0,0,18); v.Position = UDim2.new(0,0,0,13); v.BackgroundTransparency = 1
+                v.Font = Enum.Font.GothamBold; v.TextSize = 15; v.TextColor3 = C.text; v.TextXAlignment = Enum.TextXAlignment.Left
+                v.TextTruncate = Enum.TextTruncate.AtEnd; v.Text = "…"
+                local s = Instance.new("TextLabel", t)
+                s.Size = UDim2.new(1,0,0,12); s.Position = UDim2.new(0,0,0,32); s.BackgroundTransparency = 1
+                s.Font = Enum.Font.Gotham; s.TextSize = 9; s.TextColor3 = C.sub; s.TextXAlignment = Enum.TextXAlignment.Left
+                s.TextTruncate = Enum.TextTruncate.AtEnd; s.Text = ""
+                local track = Instance.new("Frame", t)
+                track.Size = UDim2.new(1,0,0,3); track.Position = UDim2.new(0,0,0,47)
+                track.BackgroundColor3 = C.panel; track.BorderSizePixel = 0; track.Visible = false
+                Instance.new("UICorner", track).CornerRadius = UDim.new(1,0)
+                local fill = Instance.new("Frame", track)
+                fill.Size = UDim2.new(0,0,1,0); fill.BackgroundColor3 = C.accent; fill.BorderSizePixel = 0
+                Instance.new("UICorner", fill).CornerRadius = UDim.new(1,0)
+                tiles[key] = { v = v, s = s, track = track, fill = fill }
+            end
+            local grid = {}
+            function grid.Set(a, key, value, sub, color, progress)
+                if a ~= grid then key, value, sub, color, progress = a, key, value, sub, color end
+                local t = tiles[key]
+                if not t then return end
+                if value ~= nil then queueWrite(t.v, "Text", tostring(value)) end
+                if sub ~= nil then queueWrite(t.s, "Text", tostring(sub)) end
+                queueWrite(t.v, "TextColor3", typeof(color) == "Color3" and color or C.text)
+                setBar(t.track, t.fill, progress, color)
+            end
+            return grid
+        end
+
+        -- KeyValue: compact two-column rows (key · wrapped value) in one card. kv:Set(key, value, color)
+        function T:KeyValue(keys, keyWidth)
+            keyWidth = tonumber(keyWidth) or 84
+            order = order + 1
+            local Card = Instance.new("Frame", page)
+            Card.Size = UDim2.new(1,-10,0,0); Card.AutomaticSize = Enum.AutomaticSize.Y
+            Card.BackgroundColor3 = C.card; Card.BorderSizePixel = 0; Card.LayoutOrder = order
+            Instance.new("UICorner", Card).CornerRadius = UDim.new(0,10)
+            local cs = Instance.new("UIStroke", Card); cs.Color = C.border; cs.Thickness = 1
+            local cp = Instance.new("UIPadding", Card)
+            cp.PaddingLeft = UDim.new(0,12); cp.PaddingRight = UDim.new(0,12); cp.PaddingTop = UDim.new(0,8); cp.PaddingBottom = UDim.new(0,8)
+            local cl = Instance.new("UIListLayout", Card); cl.Padding = UDim.new(0,3); cl.SortOrder = Enum.SortOrder.LayoutOrder
+            local rows = {}
+            for i, key in ipairs(type(keys) == "table" and keys or {}) do
+                local r = Instance.new("Frame", Card)
+                r.Size = UDim2.new(1,0,0,0); r.AutomaticSize = Enum.AutomaticSize.Y; r.BackgroundTransparency = 1; r.LayoutOrder = i
+                local k = Instance.new("TextLabel", r)
+                k.Size = UDim2.new(0,keyWidth,0,14); k.BackgroundTransparency = 1; k.Font = Enum.Font.GothamBold; k.TextSize = 10
+                k.TextColor3 = C.accent; k.TextXAlignment = Enum.TextXAlignment.Left; k.Text = tostring(key)
+                local v = Instance.new("TextLabel", r)
+                v.Size = UDim2.new(1,-keyWidth,0,0); v.Position = UDim2.new(0,keyWidth,0,0); v.AutomaticSize = Enum.AutomaticSize.Y
+                v.BackgroundTransparency = 1; v.Font = Enum.Font.Gotham; v.TextSize = 10; v.TextColor3 = C.sub
+                v.TextXAlignment = Enum.TextXAlignment.Left; v.TextYAlignment = Enum.TextYAlignment.Top; v.TextWrapped = true
+                v.Text = "…"
+                rows[key] = { v = v, k = k, r = r }
+            end
+            local kv = {}
+            -- kv:Set(key, value, color, label): label renames the row (ranking positions, hero names);
+            -- an empty value with label "" hides the row
+            function kv.Set(a, key, value, color, label)
+                if a ~= kv then key, value, color, label = a, key, value, color end
+                local row = rows[key]
+                if not row then return end
+                queueWrite(row.v, "Text", tostring(value or ""))
+                queueWrite(row.v, "TextColor3", typeof(color) == "Color3" and color or C.sub)
+                if label ~= nil then queueWrite(row.k, "Text", tostring(label)) end
+                queueWrite(row.r, "Visible", not (label == "" and (value == nil or value == "")))
+            end
+            return kv
         end
 
         -- MultiSelect: options = { "A", "B" } or { {text="A", value=1}, ... }, defaultIndices = { 1, 3 }, cb(selectedIndices, selectedValues)
@@ -1610,7 +1826,7 @@ function NexusLib:Window(cfg)
             local nL = Instance.new("TextLabel", Card)
             nL.Text = label; nL.Size = UDim2.new(1,0,0,18); nL.BackgroundTransparency = 1; nL.TextColor3 = C.text; nL.Font = Enum.Font.GothamBold; nL.TextSize = 12; nL.TextXAlignment = Enum.TextXAlignment.Left; nL.LayoutOrder = 1
             local dL = Instance.new("TextLabel", Card)
-            dL.Text = desc or ""; dL.Size = UDim2.new(1,0,0,12); dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left; dL.LayoutOrder = 2
+            dL.Text = desc or ""; dL.Size = UDim2.new(1,0,0,12); dL.BackgroundTransparency = 1; dL.TextColor3 = C.sub; dL.Font = Enum.Font.Gotham; dL.TextSize = 9; dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextTruncate = Enum.TextTruncate.AtEnd; dL.LayoutOrder = 2
 
             local btnRow = Instance.new("Frame", Card)
             btnRow.Size = UDim2.new(1,0,0,22); btnRow.BackgroundTransparency = 1; btnRow.LayoutOrder = 3
