@@ -224,18 +224,29 @@ function NexusLib:Window(cfg)
     -- Side tab rail width — fixed at 170 to fit icon + text label nicely.
     local SIDEBAR_W = 170
 
+    -- Always on top, in any game: CoreGui draws above everything in PlayerGui, whatever order
+    -- a game gives its own screens. The executor's hidden container next, PlayerGui if neither is allowed.
+    local holders = {}
+    pcall(function() holders[#holders+1] = game:GetService("CoreGui") end)
+    pcall(function() if gethui then holders[#holders+1] = gethui() end end)
+    holders[#holders+1] = playerGui
+
     -- destroy old if re-executed
-    pcall(function()
-        local old = playerGui:FindFirstChild("NexusLib_"..title:gsub("%s",""))
-        if old then old:Destroy() end
-    end)
+    for _, holder in ipairs(holders) do
+        pcall(function()
+            local old = holder:FindFirstChild("NexusLib_"..title:gsub("%s",""))
+            if old then old:Destroy() end
+        end)
+    end
 
     local Screen = Instance.new("ScreenGui")
     Screen.Name = "NexusLib_"..title:gsub("%s","")
     Screen.ResetOnSpawn = false
     Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     Screen.DisplayOrder = 2147483647 -- always on top of the game's own screens
-    Screen.Parent = playerGui
+    for _, holder in ipairs(holders) do
+        if pcall(function() Screen.Parent = holder end) then break end
+    end
 
     -- Connection registry: every global signal connection (UserInputService,
     -- LP.CharacterAdded, RunService, etc.) gets tracked here so Destroy can
