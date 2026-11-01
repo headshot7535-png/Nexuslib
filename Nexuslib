@@ -234,6 +234,7 @@ function NexusLib:Window(cfg)
     Screen.Name = "NexusLib_"..title:gsub("%s","")
     Screen.ResetOnSpawn = false
     Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    Screen.DisplayOrder = 2147483647 -- always on top of the game's own screens
     Screen.Parent = playerGui
 
     -- Connection registry: every global signal connection (UserInputService,
