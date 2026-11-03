@@ -1,8 +1,7 @@
 -- ============================================================
 --  NexusLib v1.6  |  GUI Library (Rayfield-style + ListTab + Notify)
 --  Usage:
--- -- to use local NEXUSLIB_URL = "https://raw.githubusercontent.com/headshot7535-png/Nexuslib/main/Nexuslib" in the script
---    local Lib = loadstring(game:HttpGet("URL"))()
+--    local Lib = loadstring(game:HttpGet(NEXUSLIB_URL))()   -- NEXUSLIB_URL: this file's raw link, set in your script
 --    local Win  = Lib:Window({ title="My GUI" })
 --    local Tab  = Win:Tab("⚙️","Settings")
 --    Tab:Section("Movement")
@@ -52,7 +51,6 @@ local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
-local HS               = game:GetService("HttpService")
 
 -- ── Player ───────────────────────────────────────────────────
 local LP
@@ -114,19 +112,6 @@ end
 local function getChar()  return LP.Character end
 local function getHuman() local c=getChar() return c and c:FindFirstChildOfClass("Humanoid") end
 local function getRoot()  local c=getChar() return c and c:FindFirstChild("HumanoidRootPart") end
-
--- ── HTTP helper (executor-agnostic) ───────────────────────────
-local function httpRequest(opts)
-    local fn = (syn and syn.request)
-             or (http and http.request)
-             or (http_request)
-             or (request)
-             or (HttpPost and function(o)
-                 return { Body = HttpPost(o.Url, o.Body or "", o.Headers and o.Headers["Content-Type"] or "application/json") }
-             end)
-    if not fn then return nil end
-    return fn(opts)
-end
 
 -- ── Theme ─────────────────────────────────────────────────────
 -- Slate + indigo palette. Tuned for readability and low eye-fatigue:
@@ -485,22 +470,10 @@ function NexusLib:Window(cfg)
     SDot.BackgroundColor3 = C.accent; SDot.BorderSizePixel = 0
     Instance.new("UICorner",SDot).CornerRadius = UDim.new(1,0)
     local SLbl = Instance.new("TextLabel", StatusBar)
-    SLbl.Text = "Ready"; SLbl.Size = UDim2.new(1,-115,1,0)
+    SLbl.Text = "Ready"; SLbl.Size = UDim2.new(1,-26,1,0)
     SLbl.Position = UDim2.new(0,20,0,0); SLbl.BackgroundTransparency = 1
     SLbl.TextColor3 = C.sub; SLbl.Font = Enum.Font.Gotham; SLbl.TextSize = 10
     SLbl.TextXAlignment = Enum.TextXAlignment.Left
-    local OnlineCountLbl = Instance.new("TextLabel", StatusBar)
-    OnlineCountLbl.Name = "OnlineCount"
-    OnlineCountLbl.Size = UDim2.new(0,100,1,0)
-    OnlineCountLbl.Position = UDim2.new(1,-6,0.5,0)
-    OnlineCountLbl.AnchorPoint = Vector2.new(1,0.5)
-    OnlineCountLbl.BackgroundTransparency = 1
-    OnlineCountLbl.Text = "🟢 ..."
-    OnlineCountLbl.TextColor3 = C.green
-    OnlineCountLbl.Font = Enum.Font.GothamBold
-    OnlineCountLbl.TextSize = 9
-    OnlineCountLbl.TextXAlignment = Enum.TextXAlignment.Right
-    OnlineCountLbl.ZIndex = 10
 
     -- ── Tab system ───────────────────────────────────────────
     local tabs = {}
@@ -532,9 +505,6 @@ function NexusLib:Window(cfg)
             td.page.Visible = on
         end
     end
-
-    local PRESENCE_URL = "https://anipixels-chat-default-rtdb.firebaseio.com/presence"
-    local MY_KEY = tostring(LP.UserId)
 
     -- Notify container (bottom-right of screen)
     local NotifyContainer = Instance.new("Frame", Screen)
@@ -679,72 +649,6 @@ function NexusLib:Window(cfg)
     end
 
     track(Screen.Destroying:Connect(function() Win:Destroy() end))
-
-    -- ── Live user count (Firebase HTTP) ──────────────────────
-    -- Default OFF: sync http_request + JSON decode of the whole /presence tree hitches many executors (~20s rhythm).
-    -- Opt in: _G.NexusLib_EnablePresence = true before loading NexusLib.
-    local function startPresence()
-        _G.NexusLib_PresenceGen = (_G.NexusLib_PresenceGen or 0) + 1
-        local myGen = _G.NexusLib_PresenceGen
-        local serverID = game.JobId ~= "" and game.JobId:sub(1,8) or "studio"
-        local pollSec = type(_G.NexusLib_PresencePollSec) == "number" and math.clamp(_G.NexusLib_PresencePollSec, 30, 600) or 120
-
-        local function upsert()
-            pcall(httpRequest, {
-                Url     = PRESENCE_URL.."/"..MY_KEY..".json",
-                Method  = "PUT",
-                Headers = { ["Content-Type"] = "application/json" },
-                Body    = '{"t":' .. os.time() .. ',"s":"' .. serverID .. '"}',
-            })
-        end
-
-        local function countOnline()
-            local ok, res = pcall(httpRequest, {
-                Url     = PRESENCE_URL..".json",
-                Method  = "GET",
-                Headers = { ["Accept"] = "application/json" },
-            })
-            if not ok or not res or not res.Body or res.Body == "null" or res.Body == "" then
-                return 1
-            end
-            local ok2, data = pcall(HS.JSONDecode, HS, res.Body)
-            if not ok2 or type(data) ~= "table" then return 1 end
-            local now = os.time()
-            local count = 0
-            for _, v in pairs(data) do
-                if type(v) == "table" and type(v.t) == "number" and finiteNumber(v.t, nil) and now >= v.t and (now - v.t) <= pollSec * 2 + 15 then
-                    count = count + 1
-                end
-            end
-            return math.max(1, count)
-        end
-
-        task.spawn(function()
-            upsert()
-            local count = countOnline()
-            queueWrite(OnlineCountLbl, "Text", "🟢 "..count.." online")
-            while true do
-                if _G.NexusLib_PresenceGen ~= myGen then
-                    pcall(httpRequest, {
-                        Url     = PRESENCE_URL.."/"..MY_KEY..".json",
-                        Method  = "PUT",
-                        Headers = { ["Content-Type"] = "application/json" },
-                        Body    = '{"t":0,"s":"gone"}',
-                    })
-                    break
-                end
-                task.wait(pollSec)
-                upsert()
-                count = countOnline()
-                queueWrite(OnlineCountLbl, "Text", "🟢 "..count.." online")
-            end
-        end)
-    end
-    if _G.NexusLib_EnablePresence == true then
-        startPresence()
-    else
-        OnlineCountLbl.Visible = false
-    end
 
     function Win:Tab(icon, name)
         assert(alive, "Cannot create a tab on a destroyed window")
@@ -1969,7 +1873,7 @@ function NexusLib:Window(cfg)
     end
 
     -- ChatTab removed by request (keep safe stub for compatibility).
-    function Win:ChatTab(_firebaseUrl)
+    function Win:ChatTab(_url)
         if self.Notify then
             pcall(function()
                 self:Notify("Chat Disabled", "Chat tab has been removed from this build.", 3, "warning")
